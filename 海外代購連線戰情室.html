@@ -1,0 +1,2486 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f8fafc">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="代購戰情室">
+<title>海外代購連線戰情室</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { -webkit-tap-highlight-color: transparent; }
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  .num { font-variant-numeric: tabular-nums; }
+  @keyframes bump { 0%{transform:scale(1)} 40%{transform:scale(1.06)} 100%{transform:scale(1)} }
+  .bump { animation: bump .35s ease-out; }
+  .glow-green { text-shadow: 0 0 18px rgba(16,185,129,.25); }
+  /* 頂部戰情卡摺疊（僅手機） */
+  @media (max-width: 1023.98px) {
+    #topBar.collapsed .brand-row, #topBar.collapsed #deficitLabel, #topBar.collapsed #deficitDetails { display: none; }
+    #topBar.collapsed #deficitCard { padding: .55rem .85rem; border-radius: .9rem; }
+    #topBar.collapsed #deficitAmount { font-size: 1.6rem; margin-top: 0; }
+    #topBar.collapsed #progressWrap { margin-top: .4rem; height: .4rem; }
+    #topBar:not(.collapsed) .mini-only { display: none; }
+  }
+  /* 桌機：頂部卡變左側邊欄 */
+  @media (min-width: 1024px) {
+    #topBar { position: fixed; top: 0; left: 0; bottom: 0; width: 20rem; overflow-y: auto;
+      border-bottom: 0; border-right: 1px solid rgb(226 232 240); padding: 1.25rem 1rem !important; display: flex; flex-direction: column; }
+    #topBar .mini-only, #collapseBtn { display: none !important; }
+    #deficitAmount { font-size: 2rem !important; }
+    .cost-grid { grid-template-columns: 1fr 1fr !important; }
+    .cost-grid .cost-plus { display: none; }
+    .cost-grid .cost-total { grid-column: span 2; text-align: left; display: flex; justify-content: space-between; align-items: baseline; padding: .25rem 0 0; }
+    #tabBar { display: none; }
+    #dropDock { bottom: 24px !important; }
+    #bulkBar { bottom: 24px !important; }
+    body { padding-bottom: 2.5rem; }
+  }
+  .viz { --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s-other:#b8b6ae; --grid:#e7e5e0; --ink2:#52514e; --bar:#2a78d6; }
+  .viz .seg, .viz .col { transition: opacity .15s; cursor: pointer; }
+  .viz.dim .seg:not(.on), .viz.dim .col:not(.on), .viz.dim .lg:not(.on), .viz.dim .bar-row:not(.on) { opacity: .3; }
+  @keyframes hintPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.55); } 50% { box-shadow: 0 0 0 8px rgba(245,158,11,0); } }
+  .hint-pulse { animation: hintPulse 1.6s ease-out infinite; }
+  #obTrack { scroll-snap-type: x mandatory; scrollbar-width: none; }
+  #obTrack::-webkit-scrollbar { display: none; }
+  #obTrack > section { scroll-snap-align: center; }
+  .glow-red { text-shadow: 0 0 18px rgba(220,38,38,.15); }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen pb-28">
+
+<!-- ========== 頂部固定：赤字倒數戰情卡 ========== -->
+<header id="topBar" class="shadow-sm sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-4 pt-3 pb-3" style="padding-top:max(env(safe-area-inset-top),12px)">
+  <div class="brand-row flex items-center justify-between mb-2">
+    <h1 class="flex items-center gap-2 text-sm font-bold text-slate-700">🛫 海外代購連線戰情室<button type="button" data-ob-open class="rounded-full border border-slate-300 px-1.5 text-[11px] font-bold text-slate-500 hover:bg-slate-100" aria-label="使用說明">❓ 說明</button></h1>
+    <span id="itemCountBadge" class="text-xs text-slate-500">0 品項・0 件</span>
+  </div>
+  <div id="deficitCard" class="rounded-2xl border-2 border-red-400 bg-red-50 p-4 transition-colors">
+    <div class="flex items-start justify-between gap-2">
+      <p id="deficitLabel" class="text-xs text-red-600">距離完全打平機酒與開銷，還差台幣：</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="miniLabel" class="mini-only text-xs font-bold text-red-600 shrink-0">還差</span>
+      <p id="deficitAmount" class="num text-4xl font-black text-red-600 leading-tight mt-1">NT$ 35,000</p>
+      <span id="miniPct" class="mini-only num ml-auto text-xs font-bold text-slate-700">0%</span>
+      <button id="collapseBtn" type="button" aria-label="收起或展開" class="ml-auto shrink-0 rounded-lg bg-white/70 border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 active:scale-95">▲ 收起</button>
+    </div>
+    <div id="progressWrap" class="mt-3 h-3 w-full rounded-full bg-slate-100 overflow-hidden">
+      <div id="progressBar" class="h-full bg-red-500 transition-all duration-500" style="width:0%"></div>
+    </div>
+    <div id="deficitDetails">
+    <div class="mt-2 flex justify-between text-xs">
+      <span class="text-slate-500">已實現總淨利 <b id="totalProfit" class="num text-emerald-600">NT$ 0</b></span>
+      <span id="progressPct" class="num font-bold text-slate-800">0%</span>
+    </div>
+    <div class="cost-grid mt-3 pt-3 border-t border-slate-200/80 grid grid-cols-[1fr_auto_1fr_auto] items-end gap-1.5">
+      <label class="block">
+        <span class="text-[11px] text-slate-500">✈️ 旅程費</span>
+        <input id="travelCost" type="number" inputmode="numeric" value="25000" class="num w-full rounded-lg bg-white border border-slate-300 px-2 py-1.5 text-base font-bold text-slate-800 focus:outline-none focus:border-amber-500">
+      </label>
+      <span class="cost-plus pb-2 text-slate-400 font-bold">＋</span>
+      <label class="block">
+        <span class="text-[11px] text-slate-500">🏢 基本營運開銷</span>
+        <input id="opsCost" type="number" inputmode="numeric" value="10000" class="num w-full rounded-lg bg-white border border-slate-300 px-2 py-1.5 text-base font-bold text-slate-800 focus:outline-none focus:border-amber-500">
+      </label>
+      <div class="cost-total pb-1.5 pl-1 text-right">
+        <span class="block text-[11px] text-slate-500">＝打平目標</span>
+        <b id="breakEvenTotal" class="num text-sm text-slate-800">35,000</b>
+      </div>
+    </div>
+    </div>
+  </div>
+  <!-- 桌機側邊欄導覽 -->
+  <nav class="hidden lg:flex flex-col gap-1.5 mt-5">
+    <button data-sidetab="field" class="sidetab flex items-center gap-3 rounded-xl px-4 py-3 text-left font-bold"><span class="text-xl">🧮</span>現場算盤</button>
+    <button data-sidetab="sort" class="sidetab flex items-center gap-3 rounded-xl px-4 py-3 text-left font-bold"><span class="text-xl">🌙</span>晚上整理<span id="sideSortBadge" class="hidden ml-auto rounded-full bg-sky-500 px-2 text-xs font-bold text-white"></span></button>
+    <button data-sidetab="stats" class="sidetab flex items-center gap-3 rounded-xl px-4 py-3 text-left font-bold"><span class="text-xl">📊</span>分析匯出</button>
+  </nav>
+  <p class="hidden lg:block mt-auto pt-6 text-[11px] leading-relaxed text-slate-400">💾 資料自動儲存在這台裝置。<br>稅費計算僅供定價參考，實際申報請依會計師意見。</p>
+</header>
+
+<main class="px-4 max-w-lg mx-auto mt-4 lg:mt-6 lg:max-w-none lg:mx-0 lg:pl-[22rem] lg:pr-8">
+<div id="importBanner" class="hidden mb-4 flex flex-wrap items-center gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900">
+  <span id="importBannerText" class="flex-1 min-w-[12rem]"></span>
+  <button type="button" id="importUndo" class="rounded-lg border border-emerald-400 bg-white px-3 py-2 text-xs font-bold text-emerald-700">↩ 復原（回到匯入前）</button>
+  <button type="button" id="importOk" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white">👍 沒問題</button>
+</div>
+<div id="tab-field" class="tab-panel space-y-5">
+  <div data-tip="field" class="hidden flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900"><span class="flex-1">🧮 <b>在店裡用</b>：先選「目前店家」→ 拍照、輸入外幣價 → 看保命底線定售價 → 鎖定。</span><button type="button" data-tip-close class="shrink-0 px-1 text-amber-700 hover:text-amber-900" aria-label="關閉說明">✕</button></div>
+  <div data-demo-banner class="hidden"></div>
+  <!-- ========== 1. 本趟保命成本設定 ========== -->
+  <section class="rounded-2xl bg-white border border-slate-200 overflow-hidden">
+    <button id="setupToggle" class="w-full flex items-center justify-between px-4 py-3 text-left">
+      <span class="font-bold">① 本趟保命成本設定</span>
+      <span id="setupSummary" class="text-xs text-slate-500">JPY 0.215 ▾</span>
+    </button>
+    <div id="setupBody" class="px-4 pb-4">
+    <div class="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-12 lg:gap-4 lg:items-start">
+      <div class="grid grid-cols-[3fr_2fr] gap-3 xl:col-span-5">
+        <label class="block">
+          <span class="text-xs text-slate-500">本趟名稱</span>
+          <input id="tripName" type="text" value="" placeholder="例：2026/10 東京" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-3 text-base font-bold focus:outline-none focus:border-amber-500">
+        </label>
+        <label class="block">
+          <span class="text-xs text-slate-500">出發日期</span>
+          <input id="tripDate" type="date" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-3 text-base font-bold focus:outline-none focus:border-amber-500">
+        </label>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 xl:col-span-4">
+        <label class="block">
+          <span class="text-xs text-slate-500">幣別</span>
+          <select id="currency" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-3 text-lg focus:outline-none focus:border-amber-500">
+            <option value="JPY" data-rate="0.215">🇯🇵 JPY 日幣</option>
+            <option value="KRW" data-rate="0.0235">🇰🇷 KRW 韓元</option>
+            <option value="USD" data-rate="32.5">🇺🇸 USD 美元</option>
+            <option value="EUR" data-rate="35.5">🇪🇺 EUR 歐元</option>
+            <option value="THB" data-rate="0.95">🇹🇭 THB 泰銖</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs text-slate-500">當日刷卡/換匯匯率</span>
+          <input id="rate" type="number" inputmode="decimal" step="0.0001" value="0.215"
+            class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-3 text-lg font-bold focus:outline-none focus:border-amber-500">
+        </label>
+      </div>
+
+      <label class="block xl:col-span-3">
+        <span class="text-xs text-slate-500">預設每件運費 / 集運分攤 NT$</span>
+        <input id="shipping" type="number" inputmode="numeric" value="100"
+          class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-3 text-lg font-bold focus:outline-none focus:border-amber-500">
+      </label>
+
+      <div class="rounded-xl bg-sky-50 border border-sky-200 p-3 space-y-2 text-sm xl:col-span-6">
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input id="jtaxOn" type="checkbox" checked class="mt-0.5 w-6 h-6 shrink-0 accent-sky-600">
+          <span><b>標價是未稅價</b>・實付要加當地消費稅<br><span class="text-xs text-slate-500">記錄發票上的單品未稅價，成本自動用含稅價計算</span></span>
+        </label>
+        <div class="grid grid-cols-3 gap-2">
+          <label class="block"><span class="text-[11px] text-slate-500">一般稅率 %</span>
+            <input id="jtaxStd" type="number" inputmode="decimal" value="10" class="num mt-0.5 w-full rounded-lg bg-white border border-slate-300 px-2 py-2 text-center font-bold focus:outline-none focus:border-sky-500"></label>
+          <label class="block"><span class="text-[11px] text-slate-500">🍙 食品稅率 %</span>
+            <input id="jtaxFood" type="number" inputmode="decimal" value="8" class="num mt-0.5 w-full rounded-lg bg-white border border-slate-300 px-2 py-2 text-center font-bold focus:outline-none focus:border-sky-500"></label>
+          <label class="block"><span class="text-[11px] text-slate-500">對帳容許誤差</span>
+            <input id="tol" type="number" inputmode="decimal" value="10" class="num mt-0.5 w-full rounded-lg bg-white border border-slate-300 px-2 py-2 text-center font-bold focus:outline-none focus:border-sky-500"></label>
+        </div>
+        <p class="text-[11px] text-slate-500">免稅店可在「目前店家」勾選「免稅店」，該店商品不加稅。</p>
+      </div>
+
+      <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 space-y-1 text-sm xl:col-span-6">
+        <p class="text-xs text-amber-700 font-bold mb-1">🧾 台灣端稅費扣除（點選開關）</p>
+        <label class="flex items-start gap-3 rounded-lg p-2 -mx-1 active:bg-amber-100 cursor-pointer">
+          <input id="taxOn" type="checkbox" checked class="mt-0.5 w-6 h-6 shrink-0 accent-amber-500 cursor-pointer">
+          <span>銷項營業稅 <b>5%</b>・無進項扣抵全額負擔<br><span class="text-xs text-slate-500">售價 ÷ 1.05 × 0.05</span></span>
+        </label>
+        <label class="flex items-start gap-3 rounded-lg p-2 -mx-1 active:bg-amber-100 cursor-pointer">
+          <input id="feeOn" type="checkbox" checked class="mt-0.5 w-6 h-6 shrink-0 accent-amber-500 cursor-pointer">
+          <span class="flex-1">金流 / 刷卡手續費
+            <span class="inline-flex items-center gap-1 align-middle"><input id="feeRate" type="number" inputmode="decimal" step="0.1" value="2.5"
+              class="num w-16 rounded-md bg-white border border-slate-300 px-1.5 py-0.5 text-center font-bold focus:outline-none focus:border-amber-500"><b>%</b></span>
+            <br><span id="feeFormula" class="text-xs text-slate-500">售價 × 0.025</span></span>
+        </label>
+        <p class="text-xs text-slate-500 pt-1">合計吃掉售價約 <b id="deductPct" class="num text-slate-700">7.26%</b>
+          <span class="text-slate-400">・變更會套用到已鎖定商品</span></p>
+      </div>
+
+    </div>
+    </div>
+  </section>
+
+  <div class="space-y-5 xl:space-y-0 xl:grid xl:grid-cols-2 xl:gap-6 xl:items-start">
+  <!-- ========== 2. 拍照與防爆定價算盤 ========== -->
+  <section id="calcSec" class="rounded-2xl bg-white border border-slate-200 p-4 space-y-4">
+    <h2 class="font-bold">② 現場拍照・防爆定價算盤</h2>
+
+    <div id="storeBar" class="rounded-xl border-2 border-sky-400 bg-sky-50 p-3">
+      <p class="text-[11px] font-bold text-sky-700 mb-1">🧾 目前店家／發票（之後鎖定的商品都會歸到這裡）</p>
+      <div class="flex items-center gap-2">
+        <select id="curGroup" class="flex-1 min-w-0 rounded-lg border border-sky-300 bg-white px-2 py-2.5 text-base font-black text-slate-900 focus:outline-none"></select>
+        <button id="storeNew" type="button" class="shrink-0 rounded-lg bg-sky-600 px-3 py-2.5 text-sm font-bold text-white active:scale-95">＋ 新店</button>
+      </div>
+      <div class="mt-1.5 flex items-center justify-between gap-2 text-xs">
+        <span id="storeSum" class="num text-sky-900"></span>
+        <label id="storeTaxFreeWrap" class="flex shrink-0 items-center gap-1 font-bold text-sky-800"><input id="storeTaxFree" type="checkbox" class="w-4 h-4 accent-sky-600"> 免稅店</label>
+      </div>
+    </div>
+
+    <input id="photoInput" type="file" accept="image/*" capture="environment" class="hidden">
+    <input id="albumInput" type="file" accept="image/*" class="hidden">
+    <div class="flex gap-3 items-stretch">
+      <button id="cameraBtn" class="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 transition py-4 text-base font-bold border border-slate-300">
+        📸 拍攝商品與價格標籤
+      </button>
+      <button id="albumBtn" class="rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 transition px-4 text-sm border border-slate-300">🖼️<br>相簿</button>
+    </div>
+    <div id="previewWrap" class="hidden flex items-center gap-3">
+      <img id="previewImg" class="w-[60px] h-[60px] rounded-lg object-cover border border-slate-300" alt="預覽">
+      <span class="text-xs text-slate-500 flex-1">照片已附加</span>
+      <button id="clearPhoto" class="text-xs text-red-600 px-2 py-1">移除</button>
+    </div>
+
+    <label class="block">
+      <span class="text-xs text-slate-500">商品名稱（選填）</span>
+      <input id="itemName" type="text" placeholder="例：資生堂防曬 藍瓶"
+        class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-3 focus:outline-none focus:border-amber-500">
+    </label>
+
+
+    <label class="block">
+      <span class="text-xs text-slate-500">外幣未稅價 <b id="curLabel">JPY</b>（發票上的單品價）</span>
+      <input id="foreignPrice" type="number" inputmode="decimal" placeholder="3500"
+        class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-4 py-3 text-3xl font-black focus:outline-none focus:border-amber-500">
+      <span class="text-xs text-slate-500">折合台幣進貨成本（含稅）：<b id="costTwd" class="num text-slate-700">NT$ 0</b>（＋運費 <span id="shipEcho" class="num">100</span>）</span>
+    </label>
+    <div class="-mt-2 flex items-center gap-2">
+      <div id="jtSeg" class="inline-flex shrink-0 overflow-hidden rounded-lg border border-slate-300 text-sm font-bold">
+        <button type="button" data-jt="std" class="px-3 py-2">一般 <span data-jtlabel="std">10</span>%</button>
+        <button type="button" data-jt="food" class="px-3 py-2 border-l border-slate-300">🍙 食品 <span data-jtlabel="food">8</span>%</button>
+      </div>
+      <span id="inclEcho" class="num text-xs text-slate-500"></span>
+    </div>
+
+    <!-- 保命底線 -->
+    <div class="rounded-xl border-2 border-red-500 bg-red-50 p-3">
+      <p class="text-sm font-bold text-red-600">⚠️ 最低不可賣低於 <span id="floorPrice" class="num text-2xl text-red-600">NT$ 0</span></p>
+      <p id="floorNote" class="text-xs text-red-500">否則扣除 5% 營業稅與 2.5% 金流費將虧損</p>
+    </div>
+
+    <!-- 快速加成建議 -->
+    <div>
+      <p class="text-xs text-slate-500 mb-1">快速定價（以保命底線加成，自動取整十）</p>
+      <div class="grid grid-cols-4 gap-2" id="quickMarkups">
+        <button data-m="1.15" class="qm rounded-lg bg-slate-100 py-2 text-sm font-bold active:scale-95">+15%</button>
+        <button data-m="1.25" class="qm rounded-lg bg-slate-100 py-2 text-sm font-bold active:scale-95">+25%</button>
+        <button data-m="1.35" class="qm rounded-lg bg-slate-100 py-2 text-sm font-bold active:scale-95">+35%</button>
+        <button data-m="1.5"  class="qm rounded-lg bg-slate-100 py-2 text-sm font-bold active:scale-95">+50%</button>
+      </div>
+      <div id="quoteRow" class="mt-3">
+        <p class="text-xs text-slate-500 mb-1"><span id="quoteCur">JPY</span> 報價匯率定價（含稅外幣價 × 匯率，自動取整十）</p>
+        <div class="grid grid-cols-4 gap-2" id="quoteBtns">
+          <button data-qr="0.26" class="qrb rounded-lg bg-slate-100 py-1.5 text-sm font-bold active:scale-95">0.26</button>
+          <button data-qr="0.27" class="qrb rounded-lg bg-slate-100 py-1.5 text-sm font-bold active:scale-95">0.27</button>
+          <button data-qr="0.28" class="qrb rounded-lg bg-slate-100 py-1.5 text-sm font-bold active:scale-95">0.28</button>
+          <button data-qr="0.29" class="qrb rounded-lg bg-slate-100 py-1.5 text-sm font-bold active:scale-95">0.29</button>
+        </div>
+      </div>
+    </div>
+
+    <label class="block">
+      <span class="flex flex-wrap items-baseline justify-between gap-x-2"><span class="whitespace-nowrap text-xs text-slate-500">最終決定台幣售價 NT$</span><span id="quoteRate" class="num whitespace-nowrap text-xs text-slate-500"></span></span>
+      <input id="sellPrice" type="number" inputmode="numeric" placeholder="1200"
+        class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-4 py-3 text-3xl font-black focus:outline-none focus:border-amber-500">
+    </label>
+
+    <!-- 淨利 -->
+    <div id="profitBox" class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+      <p class="text-sm"><span id="profitIcon">🟢</span> 單件真實淨利 <span id="unitProfit" class="num text-2xl font-black text-emerald-600">NT$ 0</span>
+        <span id="marginPct" class="num text-xs text-slate-500"></span></p>
+      <div class="mt-2 grid grid-cols-3 gap-1 text-[11px] text-slate-500 num">
+        <span>營業稅 <b id="bdTax" class="text-slate-700">0</b></span>
+        <span>金流費 <b id="bdFee" class="text-slate-700">0</b></span>
+        <span>成本+運 <b id="bdCost" class="text-slate-700">0</b></span>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
+      <span class="text-sm font-bold">購買件數<br><span class="text-[11px] font-normal text-slate-500">對發票用・喊單預設同數</span></span>
+      <div class="flex items-center gap-2">
+        <button id="buyMinus" type="button" class="w-11 h-11 rounded-xl bg-white border border-slate-300 text-xl font-bold active:scale-90">−</button>
+        <span id="buyQty" class="num w-8 text-center text-2xl font-black">1</span>
+        <button id="buyPlus" type="button" class="w-11 h-11 rounded-xl bg-amber-500 text-xl font-black active:scale-90">＋</button>
+      </div>
+    </div>
+
+    <button id="lockBtn" class="w-full rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[.98] transition text-slate-900 font-black text-lg py-4 shadow-lg shadow-amber-500/30 disabled:opacity-40 disabled:active:scale-100">
+      ➕ 鎖定商品（含照片）加入本日清單
+    </button>
+    <p id="lockHint" class="text-xs text-center text-slate-500 -mt-2">請先輸入外幣原價與台幣售價</p>
+  </section>
+
+  <!-- ========== 3. 視覺化相簿清單 ========== -->
+  <section class="space-y-3 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pr-1 xl:pb-4">
+    <div class="flex items-end justify-between">
+      <h2 class="font-bold">③ 本日連線清單・喊單數量</h2>
+      <button type="button" id="listFoldAll" class="hidden rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-600 active:scale-95">全部收起</button>
+    </div>
+    <div id="list" class="space-y-3"></div>
+    <div id="emptyState" class="rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center text-slate-500 text-sm">
+      還沒有鎖定的商品<br>拍一張、定個價，按琥珀色按鈕就會出現在這裡
+    </div>
+  </section>
+  </div>
+
+  <p id="saveNote" class="lg:hidden text-[11px] text-slate-400 text-center pt-2">💾 資料自動儲存在這台裝置，關掉再開都還在。<br>稅費計算僅供定價參考，實際申報請依會計師意見。</p>
+
+</div>
+
+<!-- ========== 🌙 整理 ========== -->
+<div id="tab-sort" class="tab-panel" hidden>
+<div class="space-y-4 xl:space-y-0 xl:grid xl:grid-cols-[22rem_minmax(0,1fr)] xl:gap-6 xl:items-start">
+<div class="space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pb-4">
+  <div data-tip="sort" class="hidden flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900"><span class="flex-1">🌙 <b>回飯店後</b>：① 每家店填發票總額對帳 ② 用「⚡ 整組套用」一次分好類，例外再點開修改。</span><button type="button" data-tip-close class="shrink-0 px-1 text-amber-700 hover:text-amber-900" aria-label="關閉說明">✕</button></div>
+  <div data-demo-banner class="hidden"></div>
+  <section id="sortIntro" class="rounded-2xl bg-white border border-slate-200 p-4 space-y-3">
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <h2 class="font-bold">🌙 晚上整理：對發票＋分類標籤</h2>
+      <span id="sortProgress" class="num text-xs font-bold text-slate-600">0 / 0</span>
+    </div>
+    <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden"><div id="sortBar" class="h-full bg-sky-500 transition-all" style="width:0%"></div></div>
+    <p class="text-xs text-slate-500">每家店展開後：①填發票總額核對 ✅／⚠️ ②用「⚡ 整組套用」一次分好類，例外再點開單件修改；也可以勾選多件批次處理。品名、購買／喊單件數可在卡片上修正；要換店家就按住「⠿」拖曳。</p>
+    <div>
+      <div class="flex items-center justify-between mb-1.5">
+        <p class="text-sm font-bold">🏷️ 標籤庫 <span class="text-xs font-normal text-slate-500">IP／主題／地點</span></p>
+        <div class="flex gap-3 text-xs">
+          <button id="tagManage" class="text-slate-500 underline-offset-2 active:underline">✏️ 管理</button>
+        </div>
+      </div>
+      <div id="tagChips" class="flex flex-wrap gap-2"></div>
+      <div class="mt-2 flex gap-2">
+        <input id="tagInput" type="text" enterkeyhint="done" placeholder="新增標籤，例：吉伊卡哇、淺草寺"
+          class="flex-1 min-w-0 rounded-lg bg-slate-50 border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-500">
+        <button id="tagAdd" class="rounded-lg bg-slate-800 px-4 text-sm font-bold text-white active:scale-95">＋</button>
+      </div>
+    </div>
+
+
+      <details class="rounded-xl border border-slate-200 bg-white">
+        <summary class="cursor-pointer select-none px-3 py-3 text-sm font-bold">🗂️ 商品分類清單 <span class="text-xs font-normal text-slate-500">（點開可增減、改名）</span></summary>
+        <div class="px-3 pb-3 space-y-2">
+          <p class="text-xs text-slate-500">一行一個分類。已鎖定的商品不會被改動。</p>
+          <textarea id="catEditor" rows="8" class="w-full rounded-lg bg-slate-50 border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-500"></textarea>
+          <div class="flex gap-2">
+            <button id="catSave" class="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-bold text-slate-900 active:scale-95">儲存分類</button>
+            <button id="catDefault" class="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600 active:scale-95">恢復預設</button>
+          </div>
+        </div>
+      </details>
+
+  </section>
+  <div class="flex items-center justify-between gap-2">
+    <button id="groupAdd" class="rounded-xl bg-slate-800 px-3 py-2.5 text-sm font-bold text-white active:scale-95">＋ 新增店家／發票</button>
+    <button id="groupFoldAll" class="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-600 active:scale-95">全部收起</button>
+  </div>
+  <div id="catOnlyRow" class="flex items-center justify-between">
+    <label class="flex items-center gap-2 text-sm"><input id="sortOnlyTodo" type="checkbox" class="w-5 h-5 accent-sky-500"> 只看未分類</label>
+    <button id="goStats" class="text-sm font-bold text-emerald-700">整理完了 → 📊 看分析</button>
+  </div>
+</div>
+<div class="space-y-4">
+  <div id="sortList" class="space-y-4"></div>
+  <div id="sortEmpty" class="hidden rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center text-slate-500 text-sm"></div>
+</div>
+</div>
+</div>
+
+<!-- ========== 📊 分析 ========== -->
+<div id="tab-stats" class="tab-panel space-y-4" hidden>
+  <div data-tip="stats" class="hidden flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900"><span class="flex-1">📊 <b>看成果</b>：這趟賺多少、哪一類最好賣；整理完按最下方綠色按鈕匯出 Excel。</span><button type="button" data-tip-close class="shrink-0 px-1 text-amber-700 hover:text-amber-900" aria-label="關閉說明">✕</button></div>
+  <div id="statsTodo" class="hidden rounded-xl border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-800"></div>
+  <section class="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6" id="kpiGrid"></section>
+  <div class="space-y-4 xl:space-y-0 xl:grid xl:grid-cols-4 xl:gap-4 xl:items-start">
+  <section class="rounded-2xl bg-white border border-slate-200 p-4 xl:col-span-2">
+    <h2 class="font-bold">🗂️ 分類淨利</h2>
+    <p class="text-xs text-slate-500 mb-3">滑過或點一下圓餅／長條看細節・加總＝總淨利</p>
+    <div class="viz flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+      <div id="catDonut" class="shrink-0"></div>
+      <div id="catBars" class="w-full min-w-0 flex-1 space-y-2.5"></div>
+    </div>
+  </section>
+  <section class="rounded-2xl bg-white border border-slate-200 p-4">
+    <h2 class="font-bold">🏷️ 標籤淨利</h2>
+    <p class="text-xs text-slate-500 mb-3">一個商品可有多個標籤，各列加總會大於總淨利</p>
+    <div id="tagBars" class="space-y-2.5"></div>
+  </section>
+  <section class="rounded-2xl bg-white border border-slate-200 p-4">
+    <h2 class="font-bold">🧾 店家／群組淨利</h2>
+    <p class="text-xs text-slate-500 mb-3">在「🌙 晚上整理」建立群組後出現・加總＝總淨利</p>
+    <div id="grpBars" class="space-y-2.5"></div>
+  </section>
+  </div>
+  <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+    <div class="rounded-2xl bg-white border border-slate-200 p-4"><h2 class="font-bold mb-2">🥇 淨利貢獻 Top 5</h2><ol id="topProfit" class="space-y-2"></ol></div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-4"><h2 class="font-bold mb-2">🔥 喊單件數 Top 5</h2><ol id="topQty" class="space-y-2"></ol></div>
+  </section>
+  <section id="lossBox" class="hidden rounded-2xl bg-red-50 border border-red-300 p-4">
+    <h2 class="font-bold text-red-700">⚠️ 低於保命底線的商品</h2>
+    <ul id="lossList" class="mt-2 space-y-1 text-sm"></ul>
+  </section>
+  <div class="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 xl:grid-cols-3 lg:gap-4 lg:items-start">
+  <div class="pt-2 lg:pt-4 lg:rounded-2xl lg:bg-white lg:border lg:border-slate-200 lg:p-4">
+    <button id="exportBtn" class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[.98] transition text-white font-black text-lg py-4 shadow-lg shadow-emerald-600/20">
+      📊 匯出本趟成績單 Excel
+    </button>
+    <p class="mt-1.5 text-center text-[11px] text-slate-500">含參數設定・商品明細・成績單（分類／標籤分析）・定價試算區<br>Excel 裡改黃色格子，其他數字會用公式自動重算</p>
+  </div>
+
+  <section id="backupCard" class="rounded-2xl border-2 border-sky-300 bg-sky-50 p-4 space-y-2">
+    <h2 class="font-black text-sky-800">📱 換裝置／備份資料</h2>
+    <p class="text-xs text-sky-900">把這台裝置的<b>全部資料</b>（商品、照片、店家、發票、分類、標籤、設定）打包成一個 .json 備份檔，傳到另一支手機或電腦後匯入，就能接著用。</p>
+    <div class="grid grid-cols-2 gap-2">
+      <button id="backupExport" type="button" class="rounded-xl bg-sky-600 py-3 text-sm font-black text-white active:scale-95">📦 匯出備份檔</button>
+      <label class="flex cursor-pointer items-center justify-center rounded-xl border-2 border-sky-600 bg-white py-3 text-sm font-black text-sky-700 active:scale-95">📥 匯入備份檔
+        <input id="backupImport" type="file" accept="application/json,.json" class="hidden"></label>
+    </div>
+    <p id="backupInfo" class="text-[11px] text-sky-800"></p>
+    <details class="text-[11px] text-sky-900">
+      <summary class="cursor-pointer font-bold">怎麼搬到另一台裝置？</summary>
+      <ol class="mt-1 list-decimal space-y-0.5 pl-4">
+        <li>在舊裝置按「📦 匯出備份檔」，用 LINE、AirDrop 或 Email 傳給自己。</li>
+        <li>在新裝置把檔案存到「檔案」App（iPhone）或「下載」資料夾（Android／電腦）。</li>
+        <li>在新裝置打開這個網站 →「📊 分析匯出」→「📥 匯入備份檔」選那個檔案。</li>
+      </ol>
+      <p class="mt-1">⚠️ 匯入會<b>取代</b>新裝置上現有的資料；匯入後可以按「↩ 復原」回到匯入前。備份檔含成本與售價，請不要傳到公開群組。</p>
+    </details>
+  </section>
+
+  <section class="mt-8 lg:mt-0 rounded-2xl border-2 border-red-300 bg-red-50 p-4 space-y-2">
+    <h2 class="font-black text-red-700">🧳 結束本趟・清空資料</h2>
+    <p class="text-xs text-red-800">清空後，本趟<b>所有商品、照片、店家與發票紀錄</b>都會從這台裝置刪除，<b>無法復原</b>。<br>旅程費、稅費設定、分類清單與標籤庫會保留。想留一份完整資料，可以先按左邊「📦 匯出備份檔」。</p>
+    <p id="resetExportHint" class="rounded-lg px-3 py-2 text-xs font-bold"></p>
+    <button id="resetBtn" class="w-full rounded-xl border-2 border-red-500 bg-white py-3 font-black text-red-600 active:bg-red-100">🗑️ 清空本趟資料</button>
+  </section>
+  </div>
+
+</div>
+</main>
+
+<!-- 第一次開啟：三張說明卡 -->
+<div id="onboard" class="hidden fixed inset-0 z-[80] flex items-end justify-center bg-slate-900/60 lg:items-center" role="dialog" aria-label="使用說明">
+  <div class="w-full max-w-md overflow-hidden rounded-t-3xl bg-white shadow-2xl lg:rounded-3xl" style="padding-bottom:env(safe-area-inset-bottom)">
+    <div class="flex justify-end px-4 pt-3"><button type="button" data-ob-close class="rounded-lg px-2 py-1 text-sm font-bold text-slate-400 hover:text-slate-700">略過 ✕</button></div>
+    <div id="obTrack" class="flex overflow-x-auto">
+      <section class="w-full shrink-0 px-6 pt-8 pb-4 text-center">
+        <div class="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl bg-amber-100 text-5xl">🧮</div>
+        <h3 class="mt-5 text-xl font-black">① 在店裡：現場算盤</h3>
+        <div class="mt-3 space-y-2 text-left text-[14px] leading-relaxed text-slate-700"><p>拍照、輸入<b>發票上的外幣價</b>，馬上算出<b class="text-red-600">「最低不能賣低於」</b>的保命底線，再決定售價。</p>
+          <p>先選好<b>「目前店家」</b>，之後鎖定的商品都會自動歸到那家店。</p></div>
+      </section>
+      <section class="w-full shrink-0 px-6 pt-8 pb-4 text-center">
+        <div class="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl bg-sky-100 text-5xl">🌙</div>
+        <h3 class="mt-5 text-xl font-black">② 回飯店：晚上整理</h3>
+        <div class="mt-3 space-y-2 text-left text-[14px] leading-relaxed text-slate-700"><p><b>一家店＝一張發票</b>。填入發票總額，出現 ✅ 就代表沒漏記。</p>
+          <p>用<b>「⚡ 整組套用」</b>一次分好類，例外再點開單件修改。</p>
+          <p class="rounded-xl bg-violet-50 px-3 py-2 text-[13px]">🎁 <b>售價填 0</b>＝買來送粉絲的活動贈品<br>🆓 <b>外幣價填 0</b>＝店家送的、回台可賣</p></div>
+      </section>
+      <section class="w-full shrink-0 px-6 pt-8 pb-4 text-center">
+        <div class="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl bg-emerald-100 text-5xl">📊</div>
+        <h3 class="mt-5 text-xl font-black">③ 回國：分析匯出</h3>
+        <div class="mt-3 space-y-2 text-left text-[14px] leading-relaxed text-slate-700"><p>看這趟<b>淨利、哪一類最賺</b>、離打平機酒還差多少。</p>
+          <p>一鍵匯出<b>可以改參數的 Excel</b>，傳 LINE 給會計或合夥人。</p>
+          <p class="text-[13px] text-slate-500">已經幫你放好「晴空塔、池袋」兩家店的範例，可以先點點看。</p></div>
+      </section>
+    </div>
+    <div class="flex items-center justify-center gap-2 py-2" id="obDots">
+      <span class="h-2 w-2 rounded-full bg-slate-300"></span><span class="h-2 w-2 rounded-full bg-slate-300"></span><span class="h-2 w-2 rounded-full bg-slate-300"></span>
+    </div>
+    <div class="grid grid-cols-2 gap-3 px-5 pb-5 pt-1">
+      <button type="button" data-ob-close class="rounded-xl border border-slate-300 py-3 font-bold text-slate-600">直接開始</button>
+      <button type="button" id="obNext" class="rounded-xl bg-amber-500 py-3 font-black text-slate-900">下一張 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- 補商品表單 -->
+<div id="sheet" class="hidden fixed inset-0 z-50">
+  <div data-sheet-close class="absolute inset-0 bg-slate-900/50"></div>
+  <div class="absolute inset-x-0 bottom-0 mx-auto max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:rounded-3xl bg-white p-4 space-y-3 shadow-2xl" style="padding-bottom:calc(16px + env(safe-area-inset-bottom))">
+    <div class="flex items-center justify-between gap-2">
+      <h3 id="sheetTitle" class="font-black truncate"></h3>
+      <button type="button" data-sheet-close class="text-xl text-slate-500 px-2">✕</button>
+    </div>
+    <input id="shPhotoIn" type="file" accept="image/*" class="hidden">
+    <div class="flex items-center gap-3">
+      <button id="shPhotoBtn" type="button" class="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-bold">📷 照片（選填）</button>
+      <img id="shPhotoPrev" class="hidden w-12 h-12 rounded-lg object-cover border border-slate-300" alt="">
+    </div>
+    <label class="block"><span class="text-xs text-slate-500">商品名稱</span>
+      <input id="shName" type="text" placeholder="照發票上的品名" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 focus:outline-none focus:border-amber-500"></label>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block"><span class="text-xs text-slate-500">外幣未稅價 <b id="shCur">JPY</b></span>
+        <input id="shFp" type="number" inputmode="decimal" class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 text-xl font-black focus:outline-none focus:border-amber-500"></label>
+      <label class="block"><span class="text-xs text-slate-500">稅別</span>
+        <select id="shJt" class="mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-2 py-3 font-bold"><option value="std">一般</option><option value="food">🍙 食品</option></select></label>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block"><span class="text-xs text-slate-500">台幣售價 NT$</span>
+        <input id="shSell" type="number" inputmode="numeric" class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 text-xl font-black focus:outline-none focus:border-amber-500">
+        <span id="shQuote" class="num mt-1 block text-[11px] text-slate-500"></span></label>
+      <div class="rounded-xl border-2 border-red-400 bg-red-50 px-3 py-2">
+        <p class="text-[11px] text-red-600">⚠️ 保命底線</p><p id="shFloor" class="num text-lg font-black text-red-600">—</p></div>
+    </div>
+    <div id="shQuick" class="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+      <button type="button" id="shQuickToggle" class="flex w-full items-center justify-between text-sm font-bold text-slate-700 lg:hidden"><span>⚡ 快速定價</span><span id="shQuickArrow">▾</span></button>
+      <p class="hidden text-xs font-bold text-slate-600 lg:block">⚡ 快速定價（點一下帶入售價）</p>
+      <div id="shQuickBody" class="hidden space-y-2 pt-2 lg:block">
+        <p id="shQuickNote" class="hidden rounded-lg bg-violet-100 px-2 py-1.5 text-[11px] font-bold text-violet-800">目前是 🎁 活動贈品，點下方按鈕會改回一般商品</p>
+        <div>
+          <p class="mb-1 text-[11px] text-slate-500">以保命底線加成</p>
+          <div id="shMk" class="grid grid-cols-4 gap-1.5"></div>
+        </div>
+        <div id="shQrRow">
+          <p class="mb-1 text-[11px] text-slate-500">報價匯率（含稅外幣價 × 匯率）</p>
+          <div id="shQr" class="grid grid-cols-4 gap-1.5"></div>
+        </div>
+        <div id="shOrigRow" class="hidden flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-slate-300 pt-2 text-xs">
+          <button type="button" id="shRestore" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-bold text-slate-600 active:scale-95"></button>
+          <span id="shDiff" class="num text-slate-600"></span>
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block"><span class="text-xs text-slate-500">當時匯率</span>
+        <input id="shRate" type="number" inputmode="decimal" step="0.0001" class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 text-center font-bold focus:outline-none focus:border-amber-500"></label>
+      <label class="block"><span class="text-xs text-slate-500">運費 NT$</span>
+        <input id="shShip" type="number" inputmode="numeric" class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 text-center font-bold focus:outline-none focus:border-amber-500"></label>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block"><span class="text-xs text-slate-500">購買件數</span>
+        <input id="shBuy" type="number" inputmode="numeric" value="1" class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 text-center text-xl font-black"></label>
+      <label class="block"><span class="text-xs text-slate-500">喊單件數</span>
+        <input id="shQty" type="number" inputmode="numeric" value="1" class="num mt-1 w-full rounded-xl bg-slate-50 border border-slate-300 px-3 py-2.5 text-center text-xl font-black"></label>
+    </div>
+    <div class="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-[12px] leading-relaxed text-violet-900">
+      💡 <b>贈品這樣記</b>：<b>售價填 0</b> ＝ 🎁 活動贈品（買來送粉絲，成本算行銷費用，自動歸到「免費提供」分類）；<b>外幣價填 0</b> ＝ 🆓 店家贈品（免費拿到、不在發票上，回台可賣，自動歸到「贈品」分類）。
+    </div>
+    <p id="shKindNow" class="text-xs font-bold"></p>
+    <p id="shProfit" class="num text-sm text-slate-600"></p>
+    <button id="shSave" type="button" class="w-full rounded-xl bg-amber-500 py-4 text-lg font-black text-slate-900 active:scale-[.98] disabled:opacity-40">✓ 加入這個群組</button>
+    <button id="shDelete" type="button" class="hidden w-full rounded-xl border border-red-300 py-2.5 text-sm font-bold text-red-600 active:bg-red-50">🗑️ 刪除這件商品</button>
+  </div>
+</div>
+
+<!-- 拖曳時的店家投放區 -->
+<div id="dropDock" class="hidden fixed inset-x-0 z-[65] px-3 lg:pl-[22rem] lg:pr-8" style="bottom:calc(72px + env(safe-area-inset-bottom))">
+  <div class="mx-auto max-w-3xl rounded-2xl bg-slate-900/95 p-3 shadow-2xl backdrop-blur">
+    <p class="mb-2 text-center text-xs font-bold text-slate-300">拖到要放的店家上，放開手指即可</p>
+    <div id="dropTargets" class="flex flex-wrap justify-center gap-2"></div>
+  </div>
+</div>
+
+<!-- 多選批次處理列 -->
+<div id="bulkBar" class="hidden fixed inset-x-0 z-40 px-3 lg:pl-[22rem] lg:pr-8" style="bottom:calc(72px + env(safe-area-inset-bottom))">
+  <div class="mx-auto max-w-3xl rounded-2xl bg-slate-900 p-3 text-white shadow-2xl">
+    <div class="flex items-center justify-between gap-2">
+      <span id="bulkCount" class="num text-sm font-black">已選 0 件</span>
+      <span class="text-[11px] text-slate-400">選一個動作 →</span>
+      <button id="bulkCancel" type="button" class="rounded-lg px-2 py-1 text-sm text-slate-300 hover:text-white">取消選取</button>
+    </div>
+    <div class="mt-2 grid grid-cols-3 gap-2">
+      <label class="relative flex items-center justify-center rounded-xl bg-slate-700 px-2 py-3 text-center text-sm font-black active:bg-slate-600">🗂️ 設分類
+        <select id="bulkCat" class="absolute inset-0 h-full w-full cursor-pointer opacity-0"></select></label>
+      <label class="relative flex items-center justify-center rounded-xl bg-slate-700 px-2 py-3 text-center text-sm font-black active:bg-slate-600">🏷️ 加標籤
+        <select id="bulkTag" class="absolute inset-0 h-full w-full cursor-pointer opacity-0"></select></label>
+      <label class="relative flex items-center justify-center rounded-xl bg-slate-700 px-2 py-3 text-center text-sm font-black active:bg-slate-600">🧾 換店家
+        <select id="bulkGroup" class="absolute inset-0 h-full w-full cursor-pointer opacity-0"></select></label>
+    </div>
+  </div>
+</div>
+
+<!-- 底部分頁列 -->
+<nav id="tabBar" class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200" style="padding-bottom:env(safe-area-inset-bottom)">
+  <div class="max-w-lg mx-auto grid grid-cols-3">
+    <button data-tabbtn="field" class="tabbtn py-2.5 text-center"><span class="block text-xl leading-none">🧮</span><span class="text-[11px] font-bold">現場算盤</span></button>
+    <button data-tabbtn="sort" class="tabbtn py-2.5 text-center relative"><span class="block text-xl leading-none">🌙</span><span class="text-[11px] font-bold">晚上整理</span><span id="sortBadge" class="hidden absolute top-1 left-1/2 ml-3 min-w-[18px] rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white"></span></button>
+    <button data-tabbtn="stats" class="tabbtn py-2.5 text-center"><span class="block text-xl leading-none">📊</span><span class="text-[11px] font-bold">分析匯出</span></button>
+  </div>
+</nav>
+
+<div id="toast" style="top:calc(env(safe-area-inset-top) + 12px)" class="fixed left-1/2 -translate-x-1/2 z-[70] hidden max-w-[90vw] rounded-xl bg-slate-900 text-white text-sm px-4 py-3 shadow-lg"></div>
+
+<!-- 照片放大 -->
+<div id="lightbox" class="fixed inset-0 z-50 bg-slate-900/90 hidden items-center justify-center p-4">
+  <img id="lightboxImg" class="max-h-full max-w-full rounded-xl" alt="">
+</div>
+
+<script>
+// ================= 匯出 Excel（成績單） =================
+window.WarroomExport = (() => {
+  const EXCELJS_SRC = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+  let loading = null;
+  function loadLib() {
+    if (window.ExcelJS) return Promise.resolve();
+    if (loading) return loading;
+    loading = new Promise((ok, fail) => {
+      const s = document.createElement('script');
+      s.src = EXCELJS_SRC; s.onload = ok;
+      s.onerror = () => { loading = null; const e = new Error('lib'); e.userMessage = '⚠️ 第一次匯出需要網路下載 Excel 元件，請連上網路再試'; fail(e); };
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
+
+  // ---- 樣式 ----
+  const FONT = 'Microsoft JhengHei';
+  const C = { head: 'FF1E293B', headTxt: 'FFFFFFFF', input: 'FFFFF3C4', blue: 'FF0000FF', green: 'FF008000',
+    sub: 'FFF1F5F9', section: 'FFFEF3C7', red: 'FFDC2626', redFill: 'FFFEE2E2', note: 'FF64748B', border: 'FFCBD5E1' };
+  const MONEY = '#,##0;[Red]-#,##0;0';
+  const PCT = '0.0%';
+  const thin = { style: 'thin', color: { argb: C.border } };
+  const box = { top: thin, left: thin, bottom: thin, right: thin };
+  const font = (o = {}) => ({ name: FONT, size: 11, ...o });
+
+  function styleHead(row) {
+    row.eachCell(c => {
+      c.font = font({ bold: true, color: { argb: C.headTxt } });
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.head } };
+      c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      c.border = box;
+    });
+    row.height = 30;
+  }
+  const asInput = c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.input } }; c.font = font({ color: { argb: C.blue }, bold: true }); };
+  const asData = c => { c.font = font({ color: { argb: C.blue } }); };
+  const asLink = c => { c.font = font({ color: { argb: C.green } }); };
+  const F = (formula, result) => ({ formula, result });
+  const r0 = n => Math.round(n);
+  // ExcelJS 以 UTC 寫入日期 → 用 UTC 建構，避免台灣時區差一天
+  const xlDate = str => { const [y, m, d] = String(str).split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+  const xlNow = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4);
+  const roundUp = (x, d = 0) => { const m = Math.pow(10, d); return Math.ceil(x * m - 1e-9) / m; };
+
+  async function run(ctx) {
+    await loadLib();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = '海外代購連線戰情室';
+    wb.created = new Date();
+    wb.calcProperties.fullCalcOnLoad = true;
+
+    const P = "'參數設定'!", D = "'商品明細'!";
+    const taxEff = ctx.taxOn ? ctx.taxRate / (1 + ctx.taxRate) : 0;
+    const feeEff = ctx.feeOn ? ctx.feeRate : 0;
+    const deduct = taxEff + feeEff;
+    const tripName = ctx.tripName || '未命名行程';
+    const tripDate = ctx.tripDate ? xlDate(ctx.tripDate) : xlDate(xlNow().toISOString().slice(0, 10));
+    const breakEven = ctx.travel + ctx.ops;
+    const LAST = 500; // 公式範圍涵蓋到第 500 列，方便日後手動加商品
+
+    // =============== ① 參數設定 ===============
+    const ps = wb.addWorksheet('參數設定', { properties: { tabColor: { argb: 'FFF59E0B' } } });
+    ps.columns = [{ width: 22 }, { width: 18 }, { width: 52 }];
+    ps.mergeCells('A1:C1');
+    ps.getCell('A1').value = '🛫 海外代購連線戰情室｜參數設定';
+    ps.getCell('A1').font = font({ size: 16, bold: true });
+    ps.mergeCells('A2:C2');
+    ps.getCell('A2').value = '【黃底藍字】＝可以自己改的參數，改完後「商品明細」「本趟成績單」「定價試算區」會用公式自動重算。黑字＝公式，請勿修改。';
+    ps.getCell('A2').font = font({ size: 10, color: { argb: C.note } });
+    ps.getCell('A2').alignment = { wrapText: true, vertical: 'top' };
+    ps.getRow(2).height = 34;
+
+    const prm = (r, label, value, note, fmt, kind = 'input') => {
+      ps.getCell('A' + r).value = label; ps.getCell('A' + r).font = font({ bold: kind !== 'calc' });
+      const c = ps.getCell('B' + r); c.value = value;
+      if (fmt) c.numFmt = fmt;
+      if (kind === 'input') asInput(c); else c.font = font({ bold: true });
+      c.border = box; c.alignment = { horizontal: 'right' };
+      if (note) { ps.getCell('C' + r).value = note; ps.getCell('C' + r).font = font({ size: 10, color: { argb: C.note } }); }
+    };
+    const section = (r, text) => {
+      ps.mergeCells(`A${r}:C${r}`); const c = ps.getCell('A' + r); c.value = text;
+      c.font = font({ bold: true }); c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.section } };
+    };
+    section(3, '📍 本趟資訊');
+    prm(4, '本趟名稱', tripName, '日後合併多趟資料時用來區分');
+    prm(5, '出發日期', tripDate, '', 'yyyy/mm/dd');
+    section(6, '💰 打平目標');
+    prm(7, '旅程費（機酒交通）', ctx.travel, 'NT$', MONEY);
+    prm(8, '基本營運開銷', ctx.ops, 'NT$，台灣固定開銷分攤', MONEY);
+    prm(9, '打平目標', F('B7+B8', breakEven), '＝旅程費＋營運開銷（公式）', MONEY, 'calc');
+    section(10, '🧾 稅費與匯率');
+    prm(11, '是否扣營業稅', ctx.taxOn ? '是' : '否', '下拉選「是／否」。無進項可扣抵時全額負擔');
+    prm(12, '營業稅率', ctx.taxRate, '售價內含稅：售價 ÷ (1+稅率) × 稅率', PCT);
+    prm(13, '是否扣金流費', ctx.feeOn ? '是' : '否', '下拉選「是／否」');
+    prm(14, '金流／刷卡手續費率', ctx.feeRate, '售價 × 費率', '0.00%');
+    prm(15, '匯率總調整', 0, '例：填 2% ＝所有商品匯率上調 2%，模擬「如果匯率變差」', '0.0%');
+    prm(16, '對帳容許誤差', ctx.tol, '外幣金額。發票合計與紀錄差額在此範圍內視為相符（四捨五入誤差）', '#,##0.##');
+    ['B11', 'B13'].forEach(a => ps.getCell(a).dataValidation = { type: 'list', allowBlank: false, formulae: ['"是,否"'] });
+    section(17, '⚙️ 自動計算（公式，請勿修改）');
+    prm(18, '營業稅佔售價', F('IF(B11="是",B12/(1+B12),0)', taxEff), '', '0.00%', 'calc');
+    prm(19, '金流費佔售價', F('IF(B13="是",B14,0)', feeEff), '', '0.00%', 'calc');
+    prm(20, '稅費合計佔售價', F('B18+B19', deduct), '保命底線 ＝ (台幣成本＋運費) ÷ (1 − 此比例)', '0.00%', 'calc');
+    ps.getCell('A22').value = '匯出時間';
+    ps.getCell('B22').value = xlNow(); ps.getCell('B22').numFmt = 'yyyy/mm/dd hh:mm';
+    ps.mergeCells('A23:C23');
+    ps.getCell('A23').value = '※ 稅費計算僅供定價參考，實際申報請依會計師意見。';
+    ps.getCell('A23').font = font({ size: 10, color: { argb: C.note } });
+
+    // =============== ② 商品明細 ===============
+    const ds = wb.addWorksheet('商品明細', { views: [{ state: 'frozen', ySplit: 1 }], properties: { tabColor: { argb: 'FF0EA5E9' } } });
+    const cols = [
+      ['編號', 6], ['行程', 14], ['鎖定日期', 12], ['群組（店家／發票）', 18], ['分類', 12], ['標籤', 22], ['商品名稱', 24],
+      ['幣別', 7], ['外幣未稅價', 11], ['當地稅率', 9], ['含稅外幣價', 11], ['當時匯率', 10], ['調整後匯率', 11], ['台幣成本', 11], ['運費', 8],
+      ['保命底線', 11], ['售價', 11], ['營業稅', 10], ['金流費', 10], ['單件淨利', 11], ['毛利率', 9],
+      ['購買件數', 9], ['喊單件數', 9], ['庫存件數', 9], ['小計營收', 12], ['小計淨利', 12], ['庫存成本', 11],
+      ['淨利佔比', 10], ['淨利排名', 9], ['喊單排名', 9], ['狀態', 20], ['對帳✓', 7], ['類型', 10]
+    ];
+    ds.columns = cols.map(([header, width]) => ({ header, width }));
+    styleHead(ds.getRow(1));
+
+    const groups = ctx.groups || [];
+    const gName = gid => (groups.find(g => g.id === gid) || {}).name || '未分組';
+    const items = ctx.items.slice().reverse().map(it => ({ ...it, cat: it.cat || '未分類', gname: gName(it.group),
+      buy: it.buy == null ? Math.max(it.qty, 1) : it.buy, jtr: it.jtr || 0 })); // 依鎖定順序
+    const n = items.length;
+    const calc = items.map(it => {
+      const fpi = it.fp * (1 + it.jtr), adjRate = it.rate, cost = fpi * adjRate;
+      const floor = roundUp((cost + it.ship) / (1 - deduct));
+      const tax = it.sell * taxEff, fee = it.sell * feeEff;
+      const unit = it.sell - cost - it.ship - tax - fee;
+      const inv = Math.max(0, it.buy - it.qty);
+      return { fpi, adjRate, cost, floor, tax, fee, unit, margin: it.sell > 0 ? unit / it.sell : 0,
+        rev: it.sell * it.qty, prof: unit * it.qty, qty: it.qty, inv, invCost: inv * (cost + it.ship) };
+    });
+    const totalProfit = calc.reduce((s, c) => s + c.prof, 0);
+    // 與 Excel RANK + COUNTIF 相同邏輯的名次
+    const rankOf = key => calc.map((c, i) => 1 + calc.filter(o => o[key] > c[key]).length + calc.slice(0, i).filter(o => o[key] === c[key]).length);
+    const profRank = rankOf('prof'), qtyRank = rankOf('qty');
+    const KN = { normal: '一般商品', giveaway: '活動贈品', freebie: '店家贈品' };
+    const statusOf = (it, c) => (it.kind === 'giveaway' ? '🎁活動贈品（行銷成本）' : it.sell < c.floor ? '⚠️低於底線' : it.qty > it.buy ? '⚠️喊單多於購買' : '');
+
+    items.forEach((it, i) => {
+      const r = i + 2, c = calc[i];
+      const row = ds.getRow(r);
+      row.values = [
+        i + 1, tripName, it.date ? xlDate(it.date) : tripDate, it.gname, it.cat,
+        (it.tags || []).map(t => '#' + t).join(' '), it.name, it.cur, it.fp, it.jtr,
+        F(`I${r}*(1+J${r})`, c.fpi),
+        it.rate,
+        F(`L${r}*(1+${P}$B$15)`, c.adjRate),
+        F(`K${r}*M${r}`, c.cost),
+        it.ship,
+        F(`ROUNDUP((N${r}+O${r})/(1-${P}$B$20),0)`, c.floor),
+        it.sell,
+        F(`Q${r}*${P}$B$18`, c.tax),
+        F(`Q${r}*${P}$B$19`, c.fee),
+        F(`Q${r}-N${r}-O${r}-R${r}-S${r}`, c.unit),
+        F(`IF(Q${r}>0,T${r}/Q${r},0)`, c.margin),
+        it.buy, it.qty,
+        F(`MAX(0,V${r}-W${r})`, c.inv),
+        F(`Q${r}*W${r}`, c.rev),
+        F(`T${r}*W${r}`, c.prof),
+        F(`X${r}*(N${r}+O${r})`, c.invCost),
+        F(`IF(SUM($Z$2:$Z$${LAST})=0,0,Z${r}/SUM($Z$2:$Z$${LAST}))`, totalProfit ? c.prof / totalProfit : 0),
+        F(`RANK(Z${r},$Z$2:$Z$${LAST})+COUNTIF($Z$2:Z${r},Z${r})-1`, profRank[i]),
+        F(`RANK(W${r},$W$2:$W$${LAST})+COUNTIF($W$2:W${r},W${r})-1`, qtyRank[i]),
+        F(`IF(AG${r}="活動贈品","🎁活動贈品（行銷成本）",IF(Q${r}<P${r},"⚠️低於底線",IF(W${r}>V${r},"⚠️喊單多於購買","")))`, statusOf(it, c)),
+        it.rc ? '✓' : '',
+        KN[it.kind || 'normal']
+      ];
+      row.eachCell({ includeEmpty: true }, cell => { cell.font = font(); cell.border = box; });
+      [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 32, 33].forEach(k => asData(row.getCell(k)));
+      [17, 22, 23].forEach(k => asInput(row.getCell(k)));
+      row.getCell(3).numFmt = 'yyyy/mm/dd';
+      [9, 11].forEach(k => row.getCell(k).numFmt = '#,##0.##');
+      row.getCell(10).numFmt = '0%';
+      [12, 13].forEach(k => row.getCell(k).numFmt = '0.0000');
+      [14, 15, 16, 17, 18, 19, 20, 25, 26, 27].forEach(k => row.getCell(k).numFmt = MONEY);
+      [21, 28].forEach(k => row.getCell(k).numFmt = PCT);
+      row.getCell(31).font = font({ bold: true, color: { argb: C.red } });
+      row.getCell(32).alignment = { horizontal: 'center' };
+    });
+    if (n) {
+      ds.addConditionalFormatting({
+        ref: `A2:AG${n + 1}`,
+        rules: [{ type: 'expression', formulae: ['AND($Q2<>"",$Q2<$P2,$AG2<>"活動贈品")'],
+          style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: C.redFill } } } }]
+      });
+    }
+    const catList = '"' + ctx.cats.concat('未分類').join(',').replace(/"/g, '') + '"';
+    const grpList = '"' + groups.map(g => g.name).concat('未分組').join(',').replace(/"/g, '') + '"';
+    for (let r = 2; r <= Math.max(n + 1, 2) + 30; r++) {
+      ds.getCell('AG' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['"一般商品,活動贈品,店家贈品"'], showErrorMessage: false };
+      if (catList.length <= 255) ds.getCell('E' + r).dataValidation = { type: 'list', allowBlank: true, formulae: [catList], showErrorMessage: false };
+      if (grpList.length <= 255) ds.getCell('D' + r).dataValidation = { type: 'list', allowBlank: true, formulae: [grpList], showErrorMessage: false };
+    }
+    const legendRow = n + 3;
+    ds.mergeCells(`A${legendRow}:AG${legendRow}`);
+    ds.getCell('A' + legendRow).value = '【黃底】售價、購買件數、喊單件數可直接改　【藍字】原始資料，填錯可修正（群組、分類、標籤、稅率、匯率、運費…）　【黑字】公式。成本＝外幣未稅價 ×(1＋當地稅率)× 匯率；免稅店稅率為 0%。淨利以喊單件數計，購買多於喊單的部分列為庫存。類型：🎁活動贈品＝售價 0、成本算行銷費用；🆓店家贈品＝外幣價 0、不在發票上。';
+    ds.getCell('A' + legendRow).font = font({ size: 10, color: { argb: C.note } });
+
+    // =============== ③ 本趟成績單 ===============
+    const ss = wb.addWorksheet('本趟成績單', { properties: { tabColor: { argb: 'FF10B981' } } });
+    ss.columns = [{ width: 18 }, { width: 24 }, { width: 11 }, { width: 13 }, { width: 13 }, { width: 13 }, { width: 13 }, { width: 11 }, { width: 12 }];
+    ss.mergeCells('A1:G1');
+    ss.getCell('A1').value = '🏆 本趟成績單';
+    ss.getCell('A1').font = font({ size: 16, bold: true });
+    ss.mergeCells('A2:G2');
+    ss.getCell('A2').value = F(`"行程：" & ${P}B4 & "　出發：" & TEXT(${P}B5,"yyyy/mm/dd")`,
+      `行程：${tripName}　出發：${tripDate.toISOString().slice(0, 10).replace(/-/g, '/')}`);
+    ss.getCell('A2').font = font({ color: { argb: C.note } });
+
+    const S = (col) => `${D}$${col}$2:$${col}$${LAST}`;
+    const sum = k => calc.reduce((s, c) => s + c[k], 0);
+    const sp = (a) => items.reduce((s, it, i) => s + a(it, calc[i]) * it.qty, 0);
+    const tRev = sum('rev'), tQty = sum('qty'), tBuy = items.reduce((s, it) => s + it.buy, 0);
+    const overview = [
+      ['品項數', F(`COUNTA(${S('G')})`, n), '0'],                                   // 5
+      ['購買總件數', F(`SUM(${S('V')})`, tBuy), '#,##0'],                            // 6
+      ['喊單總件數', F(`SUM(${S('W')})`, tQty), '#,##0'],                            // 7
+      ['總營收', F(`SUM(${S('Y')})`, tRev), MONEY],                                  // 8
+      ['售出商品成本', F(`SUMPRODUCT(${S('N')},${S('W')})`, sp((it, c) => c.cost)), MONEY], // 9
+      ['售出運費', F(`SUMPRODUCT(${S('O')},${S('W')})`, sp(it => it.ship)), MONEY],  // 10
+      ['銷項營業稅', F(`SUMPRODUCT(${S('R')},${S('W')})`, sp((it, c) => c.tax)), MONEY], // 11
+      ['金流手續費', F(`SUMPRODUCT(${S('S')},${S('W')})`, sp((it, c) => c.fee)), MONEY], // 12
+      ['總淨利', F(`SUM(${S('Z')})`, totalProfit), MONEY],                           // 13
+      ['整體毛利率', F('IF(B8>0,B13/B8,0)', tRev ? totalProfit / tRev : 0), PCT],     // 14
+      ['打平目標', F(`${P}B9`, breakEven), MONEY],                                   // 15
+      ['結果', F('B13-B15', totalProfit - breakEven), '"倒賺 NT$"#,##0;[Red]"還差 NT$"#,##0;"剛好打平"'], // 16
+      ['達成率', F('IF(B15>0,B13/B15,0)', breakEven ? totalProfit / breakEven : 0), PCT], // 17
+      ['庫存件數（買了未賣）', F(`SUM(${S('X')})`, sum('inv')), '#,##0'],            // 18
+      ['庫存成本', F(`SUM(${S('AA')})`, sum('invCost')), MONEY]                      // 19
+    ];
+    ss.getCell('A4').value = '📊 總覽'; ss.getCell('A4').font = font({ bold: true, size: 13 });
+    overview.forEach(([label, v, fmt], i) => {
+      const r = 5 + i;
+      const a = ss.getCell('A' + r), b = ss.getCell('B' + r);
+      a.value = label; a.font = font({ bold: true }); a.border = box;
+      a.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.sub } };
+      b.value = v; b.numFmt = fmt; b.border = box; b.font = font();
+      b.alignment = { horizontal: 'right' };
+    });
+    ss.getCell('B15').font = font({ color: { argb: C.green } });
+    ss.getCell('B13').font = font({ bold: true, size: 13 });
+    ss.getCell('B16').font = font({ bold: true, size: 13, color: { argb: 'FF059669' } });
+    ss.getCell('C11').value = '← 報 401 可參考'; ss.getCell('C11').font = font({ size: 9, color: { argb: C.note } });
+    ss.getCell('C19').value = '← 不算虧損，是壓在庫存的現金'; ss.getCell('C19').font = font({ size: 9, color: { argb: C.note } });
+
+    // --- 分類分析 ---
+    let r = 22;
+    ss.getCell('A' + (r - 1)).value = '🗂️ 分類分析（依淨利排序，單選加總＝總淨利）';
+    ss.getCell('A' + (r - 1)).font = font({ bold: true, size: 13 });
+    ss.getRow(r).values = ['分類', '品項數', '喊單件數', '營收', '淨利', '平均毛利率', '淨利佔比'];
+    styleHead(ss.getRow(r));
+    const catStats = ctx.cats.concat(items.map(it => it.cat).filter(c => c && !ctx.cats.includes(c)))
+      .filter((c, i, a) => a.indexOf(c) === i)
+      .map(cat => {
+        const idx = items.map((it, i) => i).filter(i => items[i].cat === cat);
+        return { cat, cnt: idx.length, qty: idx.reduce((s, i) => s + items[i].qty, 0),
+          rev: idx.reduce((s, i) => s + calc[i].rev, 0), prof: idx.reduce((s, i) => s + calc[i].prof, 0) };
+      })
+      .sort((a, b) => (b.cnt > 0) - (a.cnt > 0) || b.prof - a.prof);
+    const catStart = r + 1;
+    catStats.forEach((st, i) => {
+      const rr = catStart + i;
+      const cond = `${S('E')},A${rr}`;
+      ss.getRow(rr).values = [
+        st.cat,
+        F(`COUNTIF(${cond})`, st.cnt),
+        F(`SUMIF(${cond},${S('W')})`, st.qty),
+        F(`SUMIF(${cond},${S('Y')})`, st.rev),
+        F(`SUMIF(${cond},${S('Z')})`, st.prof),
+        F(`IF(D${rr}>0,E${rr}/D${rr},0)`, st.rev ? st.prof / st.rev : 0),
+        F(`IF($B$13=0,0,E${rr}/$B$13)`, totalProfit ? st.prof / totalProfit : 0)
+      ];
+    });
+    const catEnd = catStart + catStats.length - 1;
+    const catTotal = catEnd + 1;
+    ss.getRow(catTotal).values = ['合計',
+      F(`SUM(B${catStart}:B${catEnd})`, n), F(`SUM(C${catStart}:C${catEnd})`, tQty),
+      F(`SUM(D${catStart}:D${catEnd})`, tRev), F(`SUM(E${catStart}:E${catEnd})`, totalProfit),
+      F(`IF(D${catTotal}>0,E${catTotal}/D${catTotal},0)`, tRev ? totalProfit / tRev : 0),
+      F(`SUM(G${catStart}:G${catEnd})`, totalProfit ? 1 : 0)];
+    const fmtTable = (a, b, isTotal, ncol = 7) => {
+      for (let rr = a; rr <= b; rr++) {
+        const row = ss.getRow(rr);
+        for (let k = 1; k <= ncol; k++) {
+          const c = row.getCell(k); c.border = box;
+          c.font = font({ bold: k === 1 || (isTotal && rr === b) });
+          if (k === 2 || k === 3) c.numFmt = '#,##0';
+          if (k === 4 || k === 5) c.numFmt = MONEY;
+          if (k === 6 || k === 7) c.numFmt = PCT;
+          if (isTotal && rr === b) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.sub } };
+        }
+      }
+    };
+    fmtTable(catStart, catTotal, true);
+    ss.addConditionalFormatting({ ref: `E${catStart}:E${catEnd}`,
+      rules: [{ type: 'dataBar', minLength: 0, maxLength: 100, cfvo: [{ type: 'min' }, { type: 'max' }], color: { argb: 'FF10B981' }, gradient: false }] });
+
+    // --- 標籤分析 ---
+    r = catTotal + 3;
+    ss.getCell('A' + (r - 1)).value = '🏷️ 標籤分析（IP／主題／地點，依淨利排序）';
+    ss.getCell('A' + (r - 1)).font = font({ bold: true, size: 13 });
+    ss.getRow(r).values = ['標籤（不用打 #）', '品項數', '喊單件數', '營收', '淨利', '平均毛利率'];
+    styleHead(ss.getRow(r));
+    const allTags = ctx.tags.concat(items.flatMap(it => it.tags || [])).filter((t, i, a) => a.indexOf(t) === i);
+    const tagStats = allTags.map(tag => {
+      const idx = items.map((it, i) => i).filter(i => (items[i].tags || []).includes(tag));
+      return { tag, cnt: idx.length, qty: idx.reduce((s, i) => s + items[i].qty, 0),
+        rev: idx.reduce((s, i) => s + calc[i].rev, 0), prof: idx.reduce((s, i) => s + calc[i].prof, 0) };
+    }).sort((a, b) => (b.cnt > 0) - (a.cnt > 0) || b.prof - a.prof);
+    const tagStart = r + 1, blankTagRows = 5;
+    const tagRows = tagStats.concat(Array.from({ length: blankTagRows }, () => null));
+    tagRows.forEach((st, i) => {
+      const rr = tagStart + i;
+      const m = `ISNUMBER(SEARCH("#"&$A${rr}&" ",${S('F')}&" "))`;
+      const g = (expr, v) => F(`IF($A${rr}="","",${expr})`, st ? v : '');
+      ss.getRow(rr).values = [
+        st ? st.tag : null,
+        g(`SUMPRODUCT(--${m})`, st && st.cnt),
+        g(`SUMPRODUCT(--${m},${S('W')})`, st && st.qty),
+        g(`SUMPRODUCT(--${m},${S('Y')})`, st && st.rev),
+        g(`SUMPRODUCT(--${m},${S('Z')})`, st && st.prof),
+        g(`IF(D${rr}>0,E${rr}/D${rr},0)`, st && (st.rev ? st.prof / st.rev : 0))
+      ];
+      if (!st) asInput(ss.getRow(rr).getCell(1));
+    });
+    const tagEnd = tagStart + tagRows.length - 1;
+    fmtTable(tagStart, tagEnd, false, 6);
+    if (tagStats.length) ss.addConditionalFormatting({ ref: `E${tagStart}:E${tagEnd}`,
+      rules: [{ type: 'dataBar', minLength: 0, maxLength: 100, cfvo: [{ type: 'min' }, { type: 'max' }], color: { argb: 'FFF59E0B' }, gradient: false }] });
+    ss.mergeCells(`A${tagEnd + 1}:G${tagEnd + 1}`);
+    ss.getCell('A' + (tagEnd + 1)).value = '※ 一個商品可有多個標籤，會同時計入各標籤，所以各列加總會大於總淨利。黃色空白列可自行輸入想分析的標籤。';
+    ss.getCell('A' + (tagEnd + 1)).font = font({ size: 10, color: { argb: C.note } });
+    ss.getCell('A' + (tagEnd + 1)).alignment = { wrapText: true };
+    ss.getRow(tagEnd + 1).height = 30;
+
+    // --- 店家／發票核對 ---
+    r = tagEnd + 4;
+    ss.getCell('A' + (r - 1)).value = '🧾 店家／發票核對（發票合計可改；差額在容許誤差內＝相符）';
+    ss.getCell('A' + (r - 1)).font = font({ bold: true, size: 13 });
+    ss.getRow(r).values = ['群組', '品項數', '購買件數', '未稅小計', '含稅小計', '發票合計(含稅)', '差額', '核對', '淨利'];
+    styleHead(ss.getRow(r));
+    const gRows = groups.map(g => ({ name: g.name, receipt: g.receipt, taxFree: g.taxFree }));
+    if (items.some(it => it.gname === '未分組')) gRows.push({ name: '未分組', receipt: null });
+    const grpStart = r + 1;
+    gRows.forEach((g, i) => {
+      const rr = grpStart + i;
+      const idx = items.map((it, k) => k).filter(k => items[k].gname === g.name);
+      const ex = idx.reduce((s2, k) => s2 + items[k].fp * items[k].buy, 0);
+      const inc = idx.reduce((s2, k) => s2 + calc[k].fpi * items[k].buy, 0);
+      const zone = `${S('D')}=A${rr}`;
+      const hasR = g.receipt != null && g.receipt !== '';
+      const diff = hasR ? Number(g.receipt) - inc : '';
+      const verdict = !hasR ? '' : Math.abs(diff) <= ctx.tol ? '✅ 相符' : diff > 0 ? '⚠️ 少記' : '⚠️ 多記';
+      ss.getRow(rr).values = [g.name + (g.taxFree ? '（免稅）' : ''),
+        F(`COUNTIF(${S('D')},"${g.name.replace(/"/g, '""')}")`, idx.length),
+        F(`SUMIF(${S('D')},"${g.name.replace(/"/g, '""')}",${S('V')})`, idx.reduce((s2, k) => s2 + items[k].buy, 0)),
+        F(`SUMPRODUCT((${S('D')}="${g.name.replace(/"/g, '""')}")*${S('I')}*${S('V')})`, ex),
+        F(`SUMPRODUCT((${S('D')}="${g.name.replace(/"/g, '""')}")*${S('K')}*${S('V')})`, inc),
+        hasR ? Number(g.receipt) : null,
+        F(`IF(F${rr}="","",F${rr}-E${rr})`, diff),
+        F(`IF(F${rr}="","",IF(ABS(G${rr})<=${P}$B$16,"✅ 相符",IF(G${rr}>0,"⚠️ 少記","⚠️ 多記")))`, verdict),
+        F(`SUMIF(${S('D')},"${g.name.replace(/"/g, '""')}",${S('Z')})`, idx.reduce((s2, k) => s2 + calc[k].prof, 0))];
+    });
+    const grpEnd = grpStart + Math.max(gRows.length, 1) - 1;
+    if (!gRows.length) ss.getRow(grpStart).values = ['（尚未建立群組）'];
+    for (let rr = grpStart; rr <= grpEnd; rr++) {
+      const row = ss.getRow(rr);
+      for (let k = 1; k <= 9; k++) { const c = row.getCell(k); c.border = box; c.font = font({ bold: k === 1 || k === 8 }); }
+      [2, 3, 4, 5, 6].forEach(k => row.getCell(k).numFmt = '#,##0');
+      row.getCell(7).numFmt = '#,##0;[Red]-#,##0;0';
+      row.getCell(9).numFmt = MONEY;
+      if (gRows.length && gRows[rr - grpStart].name !== '未分組') asInput(row.getCell(6));
+    }
+    ss.mergeCells(`A${grpEnd + 1}:I${grpEnd + 1}`);
+    ss.getCell('A' + (grpEnd + 1)).value = '※ 含稅小計＝外幣未稅價 ×(1＋當地稅率)× 購買件數。差額＝發票合計 − 含稅小計：正數（少記）代表發票比紀錄多、還有商品沒記；負數（多記）代表紀錄比發票多。';
+    ss.getCell('A' + (grpEnd + 1)).font = font({ size: 10, color: { argb: C.note } });
+    ss.getCell('A' + (grpEnd + 1)).alignment = { wrapText: true };
+    ss.getRow(grpEnd + 1).height = 44;
+
+    // --- 排行榜 ---
+    const topBlock = (startRow, title, rankCol, color) => {
+      ss.getCell('A' + (startRow - 1)).value = title;
+      ss.getCell('A' + (startRow - 1)).font = font({ bold: true, size: 13 });
+      ss.getRow(startRow).values = ['名次', '商品名稱', '分類', '喊單件數', '小計淨利', '單件淨利', '毛利率'];
+      styleHead(ss.getRow(startRow));
+      const ranks = rankCol === 'AC' ? profRank : qtyRank;
+      for (let k = 1; k <= 5; k++) {
+        const rr = startRow + k, i = ranks.indexOf(k);
+        const has = i >= 0;
+        const pick = (col, v) => F(`IFERROR(INDEX(${S(col)},MATCH($A${rr},${S(rankCol)},0)),"")`, has ? v : '');
+        ss.getRow(rr).values = [k,
+          pick('G', has && items[i].name), pick('E', has && items[i].cat),
+          pick('W', has && items[i].qty), pick('Z', has && calc[i].prof),
+          pick('T', has && calc[i].unit), pick('U', has && calc[i].margin)];
+        const row = ss.getRow(rr);
+        for (let c = 1; c <= 7; c++) { row.getCell(c).border = box; row.getCell(c).font = font({ bold: c === 1 }); }
+        row.getCell(1).alignment = { horizontal: 'center' };
+        row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+        row.getCell(4).numFmt = '#,##0'; row.getCell(5).numFmt = MONEY; row.getCell(6).numFmt = MONEY; row.getCell(7).numFmt = PCT;
+      }
+      return startRow + 6;
+    };
+    let nextRow = topBlock(grpEnd + 4, '🥇 淨利貢獻 Top 5', 'AC', 'FFD1FAE5');
+    topBlock(nextRow + 2, '🔥 喊單件數 Top 5', 'AD', 'FFFEF3C7');
+
+    // =============== ④ 定價試算區 ===============
+    const ts = wb.addWorksheet('定價試算區', { views: [{ state: 'frozen', ySplit: 5 }], properties: { tabColor: { argb: 'FF8B5CF6' } } });
+    ts.columns = [{ width: 12 }, { width: 22 }, { width: 7 }, { width: 11 }, { width: 9 }, { width: 10 }, { width: 8 }, { width: 11 },
+      { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 12 }, { width: 9 }];
+    ts.mergeCells('A1:O1');
+    ts.getCell('A1').value = '🧮 定價試算區（規劃下一趟用）';
+    ts.getCell('A1').font = font({ size: 16, bold: true });
+    ts.mergeCells('A2:O2');
+    ts.getCell('A2').value = '填黃色格子：外幣未稅價必填；當地稅率、匯率、運費已帶入目前設定可修改；填「自訂售價」會算出預估淨利。台灣端稅費與匯率調整沿用「參數設定」。';
+    ts.getCell('A2').font = font({ size: 10, color: { argb: C.note } });
+    ts.getCell('H4').value = '稅費比例 →'; ts.getCell('H4').font = font({ bold: true }); ts.getCell('H4').alignment = { horizontal: 'right' };
+    ts.mergeCells('J3:L3'); ts.getCell('J3').value = '↓ 建議售價的加成比例（可改）'; ts.getCell('J3').font = font({ bold: true, size: 10 }); ts.getCell('J3').alignment = { horizontal: 'center' };
+    ts.getCell('I4').value = F(`${P}B20`, deduct); ts.getCell('I4').numFmt = '0.00%'; asLink(ts.getCell('I4'));
+    [['J4', 0.25], ['K4', 0.35], ['L4', 0.5]].forEach(([a, v]) => { const c = ts.getCell(a); c.value = v; c.numFmt = '"+"0%'; asInput(c); c.border = box; c.alignment = { horizontal: 'center' }; });
+    ts.getRow(5).values = ['分類', '商品名稱', '幣別', '外幣未稅價', '當地稅率', '匯率', '運費', '台幣成本', '保命底線', '建議售價 A', '建議售價 B', '建議售價 C', '自訂售價', '預估單件淨利', '毛利率'];
+    styleHead(ts.getRow(5));
+    const defT = ctx.jtaxStd || 0;
+    for (let rr = 6; rr <= 25; rr++) {
+      const ex = rr === 6;
+      const fp = ex ? (ctx.currency === 'JPY' ? 3500 : 100) : null;
+      const cost = ex ? fp * (1 + defT) * ctx.rate : 0;
+      const floor = ex ? roundUp((cost + ctx.shipping) / (1 - deduct)) : 0;
+      const sug = m => roundUp(floor * (1 + m) / 10) * 10;
+      const e = v => (ex ? v : '');
+      ts.getRow(rr).values = [
+        ex ? (ctx.cats[0] || '') : null, ex ? '（範例，可改或刪除）' : null, ctx.currency, fp, defT, ctx.rate, ctx.shipping,
+        F(`IF($D${rr}="","",D${rr}*(1+E${rr})*F${rr}*(1+${P}$B$15))`, e(cost)),
+        F(`IF($D${rr}="","",ROUNDUP((H${rr}+G${rr})/(1-${P}$B$20),0))`, e(floor)),
+        F(`IF($D${rr}="","",ROUNDUP(I${rr}*(1+J$4)/10,0)*10)`, e(sug(0.25))),
+        F(`IF($D${rr}="","",ROUNDUP(I${rr}*(1+K$4)/10,0)*10)`, e(sug(0.35))),
+        F(`IF($D${rr}="","",ROUNDUP(I${rr}*(1+L$4)/10,0)*10)`, e(sug(0.5))),
+        null,
+        F(`IF(OR($D${rr}="",$M${rr}=""),"",M${rr}-H${rr}-G${rr}-M${rr}*${P}$B$18-M${rr}*${P}$B$19)`, ''),
+        F(`IF(N${rr}="","",N${rr}/M${rr})`, '')
+      ];
+      const row = ts.getRow(rr);
+      for (let k = 1; k <= 15; k++) { const c = row.getCell(k); c.border = box; c.font = font(); }
+      [1, 2, 3, 4, 5, 6, 7, 13].forEach(k => asInput(row.getCell(k)));
+      if (ex) row.getCell(2).font = font({ italic: true, color: { argb: C.blue } });
+      row.getCell(4).numFmt = '#,##0.##'; row.getCell(5).numFmt = '0%'; row.getCell(6).numFmt = '0.0000';
+      [7, 8, 9, 10, 11, 12, 13, 14].forEach(k => row.getCell(k).numFmt = MONEY);
+      row.getCell(15).numFmt = PCT;
+      row.getCell(9).font = font({ bold: true, color: { argb: C.red } });
+    }
+    const tsCat = '"' + ctx.cats.join(',').replace(/"/g, '') + '"';
+    if (tsCat.length <= 255) for (let rr = 6; rr <= 25; rr++) ts.getCell('A' + rr).dataValidation = { type: 'list', allowBlank: true, formulae: [tsCat], showErrorMessage: false };
+
+    // 開啟時先看成績單
+    wb.views = [{ activeTab: 2, firstSheet: 0, visibility: 'visible' }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const safe = tripName.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30);
+    const fname = `代購成績單_${safe}_${stamp}.xlsx`;
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await deliver(blob, fname);
+    return fname;
+  }
+
+  async function deliver(blob, fname) {
+    const file = new File([blob], fname, { type: blob.type });
+    const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (mobile && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: fname }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+  }
+
+  return { run, deliver, _loadLib: loadLib };
+})();
+</script>
+
+<script>
+(() => {
+  // 稅費參數（可由開關調整）
+  let TAX = 0.05 / 1.05;          // 內含 5% 銷項稅
+  let FEE = 0.025;                // 金流費
+  let DIVISOR = 1 - FEE - TAX;    // ≈ 0.92738
+  function readDeductions() {
+    const r = Math.max(0, parseFloat($('feeRate').value) || 0) / 100;
+    TAX = $('taxOn').checked ? 0.05 / 1.05 : 0;
+    FEE = $('feeOn').checked ? r : 0;
+    DIVISOR = 1 - FEE - TAX;
+    $('feeRate').disabled = !$('feeOn').checked;
+    $('feeRate').classList.toggle('opacity-40', !$('feeOn').checked);
+    $('feeFormula').textContent = '售價 × ' + +r.toFixed(4);
+    const parts = [];
+    if (TAX) parts.push('5% 營業稅'); if (FEE) parts.push(+(FEE*100).toFixed(2) + '% 金流費');
+    $('floorNote').textContent = parts.length ? '否則扣除 ' + parts.join('與') + '將虧損' : '否則連進貨成本加運費都回不了本';
+    $('deductPct').textContent = ((TAX + FEE) * 100).toFixed(2) + '%';
+    // 已鎖定商品同步重算
+    recalcItems();
+  }
+
+  const $ = id => document.getElementById(id);
+  const fmt = n => 'NT$ ' + Math.round(n).toLocaleString('zh-TW');
+  const val = id => parseFloat($(id).value) || 0;
+
+  const DEFAULT_CATS = ['美妝保養','藥妝保健','零食食品','動漫玩具','贈品','免費提供'];
+  const CAT_ICON = {'美妝保養':'💄','藥妝保健':'💊','零食食品':'🍫','動漫玩具':'🧸','贈品':'🆓','免費提供':'🎁','服飾配件':'👗','精品包款':'👜','生活雜貨':'🏠','3C玩具':'🎮','其他':'📦'};
+  // 贈品＝店家送的（外幣價 0）；免費提供＝自己買來當活動贈品送粉絲（售價 0）
+  const KIND_CAT = { freebie: '贈品', giveaway: '免費提供' };
+  const catIcon = c => CAT_ICON[c] || '🏷️';
+  const state = { items: [], photo: null, nextId: 1,
+    cats: DEFAULT_CATS.slice(), tags: [], selCat: '', selTags: [], tagManage: false,
+    groups: [], nextGid: 1, ungroupedOpen: true, bulk: new Set(),
+    curGroup: '', curJt: 'std', buyQty: 1, sortMode: 'group', curKind: 'normal', expandedId: null, uSort: 'lock' };
+  const todayStr = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
+
+  // ---------- 核心公式 ----------
+  const costOf = (fp, rate) => fp * rate;
+  const floorOf = (fp, rate, ship) => (costOf(fp, rate) + ship) / DIVISOR;
+  const profitOf = (sell, fp, rate, ship) => sell - costOf(fp, rate) - ship - sell * TAX - sell * FEE;
+  // 當地消費稅：記錄未稅價，成本用含稅價
+  function jtaxOf(jt, gid) {
+    if (!$('jtaxOn').checked) return 0;
+    const g = state.groups.find(x => x.id === gid);
+    if (g && g.taxFree) return 0;
+    return Math.max(0, (jt === 'food' ? val('jtaxFood') : val('jtaxStd'))) / 100;
+  }
+  const fpIncl = it => it.fp * (1 + jtaxOf(it.jt, it.group));
+  const KIND = { normal: '一般商品', giveaway: '活動贈品', freebie: '店家贈品' };
+  // 類型由數字自動判斷：外幣價 0＝店家贈品、售價 0＝活動贈品
+  const kindOf = it => (+it.fp === 0 ? 'freebie' : +it.sell === 0 ? 'giveaway' : 'normal');
+  const kindBadge = it => kindOf(it) === 'giveaway' ? '<span class="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">🎁 活動贈品</span>'
+    : kindOf(it) === 'freebie' ? '<span class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">🆓 店家贈品</span>' : '';
+  const KIND_HINT = {
+    normal: '照發票上的未稅價記錄，賣給客人。',
+    giveaway: '自己買來當 IG／LINE 抽獎禮物：不販售，成本（含稅＋運費）會算成行銷費用，從淨利扣掉；發票上有，所以會算進發票核對。',
+    freebie: '結帳時店家送的：成本 0、不在發票上，不影響發票核對；回台灣可以賣，扣掉運費與稅費後都是利潤。'
+  };
+  const buyOf = it => (it.buy == null ? Math.max(it.qty, 1) : it.buy);
+  function recalcItems() { state.items.forEach(it => it.profit = profitOf(it.sell, fpIncl(it), it.rate, it.ship)); }
+  const fmtN = n => Math.round(n).toLocaleString('zh-TW');
+
+  // ---------- 設定區 ----------
+  $('setupToggle').onclick = () => $('setupBody').classList.toggle('hidden');
+  $('currency').onchange = e => {
+    const opt = e.target.selectedOptions[0];
+    $('rate').value = opt.dataset.rate;
+    $('curLabel').textContent = e.target.value;
+    calc(); renderDashboard();
+  };
+  ['taxOn','feeOn','feeRate'].forEach(id => $(id).addEventListener(id === 'feeRate' ? 'input' : 'change', () => {
+    readDeductions(); calc(); renderList(); renderDashboard(true);
+  }));
+  ['travelCost','opsCost','rate','shipping'].forEach(id => $(id).addEventListener('input', () => { calc(); renderDashboard(); }));
+  function refreshAll(anim) { readDeductions(); calc(); renderList(); renderSort(); renderDashboard(anim); }
+  $('jtaxOn').addEventListener('change', () => refreshAll(true));
+  ['jtaxStd','jtaxFood'].forEach(id => $(id).addEventListener('input', () => {
+    document.querySelectorAll(`[data-jtlabel="${id === 'jtaxStd' ? 'std' : 'food'}"]`).forEach(e => e.textContent = $(id).value || 0);
+    refreshAll(true);
+  }));
+  $('tol').addEventListener('input', () => { renderSort(); save(); });
+
+  function updateSetupSummary() {
+    $('setupSummary').textContent = `${$('currency').value} ${$('rate').value} ▾`;
+    $('shipEcho').textContent = Math.round(val('shipping'));
+  }
+
+  // ---------- 拍照 ----------
+  $('cameraBtn').onclick = () => $('photoInput').click();
+  $('albumBtn').onclick = () => $('albumInput').click();
+  [$('photoInput'), $('albumInput')].forEach(inp => inp.addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    compressImage(f, 400).then(dataUrl => {
+      state.photo = dataUrl;
+      $('previewImg').src = dataUrl;
+      $('previewWrap').classList.remove('hidden');
+      $('previewWrap').classList.add('flex');
+    });
+    e.target.value = '';
+  }));
+  $('clearPhoto').onclick = () => { state.photo = null; $('previewWrap').classList.add('hidden'); $('previewWrap').classList.remove('flex'); };
+
+  // 壓縮成小圖 Base64，避免記憶體爆掉（手機原圖動輒 5MB）
+  function compressImage(file, maxSide) {
+    return new Promise(resolve => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  // ---------- 🌙 整理：分類 / 標籤 ----------
+  const chipCls = (on, sm) => `rounded-full border ${sm ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-sm'} font-bold active:scale-95 transition ` +
+    (on ? 'bg-sky-500 border-sky-500 text-white' : 'bg-white border-slate-300 text-slate-700');
+  function renderTagChips() {
+    $('tagChips').innerHTML = state.tags.length
+      ? state.tags.map(t => state.tagManage
+          ? `<button type="button" data-tag="${escapeHtml(t)}" class="rounded-full border border-red-300 bg-red-50 px-3 py-2 text-sm font-bold text-red-600 active:scale-95">#${escapeHtml(t)} ✕</button>`
+          : `<span class="rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">#${escapeHtml(t)}</span>`).join('')
+      : '<span class="text-xs text-slate-400">還沒有標籤，在下面輸入第一個吧（可一次輸入多個，用逗號或空白分隔）</span>';
+    $('tagManage').textContent = state.tagManage ? '✅ 完成' : '✏️ 管理';
+  }
+  $('tagChips').addEventListener('click', e => {
+    const b = e.target.closest('[data-tag]'); if (!b || !state.tagManage) return;
+    const t = b.dataset.tag;
+    if (!confirm(`從標籤庫刪除「#${t}」？（已套用在商品上的會一起移除）`)) return;
+    state.tags = state.tags.filter(x => x !== t);
+    state.items.forEach(it => it.tags = (it.tags || []).filter(x => x !== t));
+    renderTagChips(); renderSort(); save();
+  });
+  function addTag() {
+    const raw = $('tagInput').value.split(/[,，、\s]+/).map(x => x.replace(/^#+/, '').trim()).filter(Boolean);
+    if (!raw.length) return;
+    raw.forEach(t => { if (!state.tags.includes(t)) state.tags.push(t); });
+    $('tagInput').value = ''; state.tagManage = false;
+    renderTagChips(); renderSort(); save();
+  }
+  $('tagAdd').onclick = addTag;
+  $('tagInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+  $('tagManage').onclick = () => { state.tagManage = !state.tagManage; renderTagChips(); };
+  function fillCatEditor() { $('catEditor').value = state.cats.join('\n'); }
+  $('catSave').onclick = () => {
+    const list = [...new Set($('catEditor').value.split('\n').map(x => x.trim()).filter(Boolean))];
+    if (!list.length) { toast('至少要有一個分類'); return; }
+    state.cats = list; fillCatEditor(); renderSort(); save(); toast('分類已儲存');
+  };
+  $('catDefault').onclick = () => { state.cats = DEFAULT_CATS.slice(); fillCatEditor(); renderSort(); save(); };
+
+  function sortProgress() {
+    const n = state.items.length, done = state.items.filter(i => i.cat).length;
+    $('sortProgress').textContent = `已分類 ${done} / ${n}`;
+    $('sortBar').style.width = (n ? done / n * 100 : 0) + '%';
+    const todo = n - done;
+    $('sortBadge').textContent = todo; $('sortBadge').classList.toggle('hidden', !todo);
+    $('sideSortBadge').textContent = todo; $('sideSortBadge').classList.toggle('hidden', !todo);
+    return { n, done, todo };
+  }
+  // ---- 群組（店家／發票） ----
+  const groupName = gid => (state.groups.find(g => g.id === gid) || {}).name || '未分組';
+  function newGroup(moveIds) {
+    const name = (prompt('店家／發票名稱（例：A店 唐吉訶德澀谷、發票 #1）', `店家 ${state.groups.length + 1}`) || '').trim();
+    if (!name) return null;
+    const g = { id: 'g' + state.nextGid++, name, receipt: null, open: true, taxFree: false, recon: false };
+    state.groups.push(g);
+    (moveIds || []).forEach(id => { const it = state.items.find(i => i.id == id); if (it) it.group = g.id; });
+    recalcItems();
+    return g;
+  }
+  function moveItems(ids, gid) {
+    ids.forEach(id => { const it = state.items.find(i => i.id == id); if (it) { it.group = gid; it.rc = false; } });
+    recalcItems(); renderSort(); renderList(); renderDashboard(true);
+  }
+  function sums(list) {
+    const incl = {}, excl = {};
+    list.forEach(it => { const b = buyOf(it); incl[it.cur] = (incl[it.cur] || 0) + fpIncl(it) * b; excl[it.cur] = (excl[it.cur] || 0) + it.fp * b; });
+    return { incl, excl, curs: Object.keys(incl) };
+  }
+  const fmtCur = m => Object.keys(m).length ? Object.entries(m).map(([c, v]) => `${c} ${fmtN(v)}`).join(' + ') : '—';
+  function receiptCheck(g, all) {
+    const { incl, curs } = sums(all);
+    if (g.receipt == null || g.receipt === '') return { html: '<span class="text-slate-400">發票未填</span>', ok: null };
+    if (curs.length > 1) return { html: '<span class="text-amber-600">多幣別，請手動核對</span>', ok: null };
+    const diff = Number(g.receipt) - (incl[curs[0]] || 0), tol = Math.max(0, val('tol'));
+    if (Math.abs(diff) <= tol) return { html: `<span class="font-bold text-emerald-600">✅ 發票對上了${Math.abs(diff) >= 1 ? `（差 ${fmtN(diff)}，在誤差內）` : ''}</span>`, ok: true, diff };
+    return { html: `<span class="font-bold text-red-600">⚠️ ${diff > 0 ? '還少記' : '多記了'} ${curs[0] || ''} ${fmtN(Math.abs(diff))}</span><span class="text-slate-500">（不影響分析）</span>`, ok: false, diff };
+  }
+  // 分類模式：完整卡片
+  function cardHtml(it) {
+    return `
+      <div class="rounded-2xl bg-white border-2 border-amber-400 shadow-lg p-3 space-y-2.5" data-id="${it.id}">
+        <button type="button" data-collapse class="-mt-1 flex w-full items-center justify-between text-[11px] font-bold text-amber-700 hover:text-amber-900"><span>✏️ 編輯中</span><span>▲ 收起</span></button>
+        ${demoHintOn(it) ? '<p class="rounded-lg bg-amber-100 px-3 py-2 text-[12px] font-bold text-amber-900">👉 試試看：點右邊的 <span class="rounded bg-white px-1">✏️</span> 修改，把<b>售價改成 0</b>，它就會變成 🎁 活動贈品，淨利會自動扣掉這筆成本。</p>' : ''}
+        <div class="flex gap-3">
+          ${it.photo ? `<img src="${it.photo}" data-zoom class="w-[60px] h-[60px] rounded-lg object-cover border border-slate-300 shrink-0" alt="">`
+                     : `<div class="w-[60px] h-[60px] rounded-lg bg-slate-100 flex items-center justify-center text-2xl shrink-0">🛍️</div>`}
+          <div class="flex-1 min-w-0 space-y-1">
+            <div class="flex items-center gap-1.5">
+              <input data-name value="${escapeHtml(it.name)}" class="flex-1 min-w-0 rounded-lg border border-transparent bg-slate-50 px-2 py-1 font-bold focus:outline-none focus:border-sky-400">
+              <button type="button" data-edit class="${demoHintOn(it) ? 'hint-pulse border-amber-500 ' : 'border-slate-300 '}shrink-0 rounded-lg border bg-white px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50 active:scale-95">✏️<span class="hidden sm:inline"> 修改</span></button>
+            </div>
+            ${kindBadge(it)}
+            <button type="button" data-edit class="flex max-w-full flex-wrap items-center gap-x-2 text-left text-xs text-slate-500 num hover:text-slate-800" title="點一下修改金額">
+              <span class="underline decoration-dotted underline-offset-2">${it.cur} ${it.fp.toLocaleString()}${it.jt === 'food' ? ' 🍙' : ''}・售 ${fmt(it.sell)}</span><span>・淨利 <b class="${it.profit < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmt(it.profit)}</b></span>
+            </button>
+            <div class="flex items-center gap-1.5">
+              <span data-drag style="touch-action:none" class="flex-1 min-w-0 cursor-grab select-none rounded-lg border border-dashed border-slate-400 bg-slate-50 px-2 py-1.5 text-center text-xs font-bold text-slate-600 hover:bg-slate-100 active:cursor-grabbing" title="按住拖曳到其他店家">⠿ 按住拖曳換店</span>
+              <span class="text-xs text-slate-500 shrink-0">買</span>
+              <input data-sbuy type="number" inputmode="numeric" min="0" value="${buyOf(it)}" class="num w-10 shrink-0 rounded-lg border border-slate-300 bg-white px-1 py-1 text-center text-sm font-bold focus:outline-none focus:border-sky-400">
+              <span class="text-xs text-slate-500 shrink-0">喊</span>
+              <input data-sqty type="number" inputmode="numeric" min="0" value="${it.qty}" class="num w-10 shrink-0 rounded-lg border border-slate-300 bg-white px-1 py-1 text-center text-sm font-bold focus:outline-none focus:border-sky-400">
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5">${state.cats.map(c => `<button type="button" data-scat="${escapeHtml(c)}" class="${chipCls(it.cat === c, true)}">${catIcon(c)} ${escapeHtml(c)}</button>`).join('')}</div>
+        ${state.tags.length ? `<div class="flex flex-wrap gap-1.5 border-t border-dashed border-slate-200 pt-2">${state.tags.map(t => `<button type="button" data-stag="${escapeHtml(t)}" class="${chipCls((it.tags || []).includes(t), true)}">#${escapeHtml(t)}</button>`).join('')}</div>` : ''}
+      </div>`;
+  }
+  // 精簡列：一行一件，點一下展開成完整卡片
+  const demoHintOn = it => it.demo && it.id === 2 && !state.demoTried;
+  function rowHtml(it) {
+    const sel = state.bulk.has(String(it.id));
+    const catTxt = it.cat ? `${catIcon(it.cat)} ${escapeHtml(it.cat)}` : '<span class="text-sky-600">❔ 未分類</span>';
+    const tagTxt = (it.tags || []).length ? (it.tags || []).map(t => '#' + escapeHtml(t)).join(' ') : '';
+    return `
+      <div data-id="${it.id}" class="flex items-center gap-2 rounded-xl border px-2 py-1.5 ${sel ? 'border-amber-400 bg-amber-50' : it.cat ? 'border-slate-200 bg-white' : 'border-sky-300 bg-sky-50/60'}">
+        <input data-bulk type="checkbox" ${sel ? 'checked' : ''} class="h-5 w-5 shrink-0 accent-amber-500" aria-label="選取">
+        <button type="button" data-rowtoggle class="flex min-w-0 flex-1 items-center gap-2 text-left">
+          ${it.photo ? `<img src="${it.photo}" class="h-10 w-10 shrink-0 rounded-md border border-slate-200 object-cover" alt="">` : '<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-100">🛍️</span>'}
+          <span class="min-w-0 flex-1">
+            <span class="flex items-center gap-1.5"><span class="truncate text-sm font-bold">${escapeHtml(it.name)}</span>${kindBadge(it)}</span>
+            <span class="num block truncate text-[11px] text-slate-500">${it.cur} ${fmtN(it.fp)}・售 ${fmt(it.sell)}・淨利 <b class="${it.profit < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmt(it.profit)}</b>${buyOf(it) !== 1 || it.qty !== 1 ? `・買${buyOf(it)}/喊${it.qty}` : ''}</span>
+            <span class="block truncate text-[11px] text-slate-600 sm:hidden">${catTxt}${tagTxt ? '　' + tagTxt : ''}</span>
+          </span>
+          <span class="hidden max-w-[45%] shrink-0 truncate text-right text-xs text-slate-600 sm:block">${catTxt}${tagTxt ? `<span class="block truncate text-[11px] text-slate-500">${tagTxt}</span>` : ''}</span>
+          ${demoHintOn(it) ? '<span class="hint-pulse shrink-0 rounded-full bg-amber-500 px-2 py-1 text-[11px] font-black text-slate-900">👆 點我試試</span>' : ''}
+          <span class="shrink-0 text-lg leading-none text-slate-400">›</span>
+        </button>
+      </div>`;
+  }
+  const SORTS = { lock: '依鎖定順序', price: '依金額（高→低，對收據）', todo: '未分類優先' };
+  function sortList(list, mode) {
+    const a = list.slice();
+    if (mode === 'price') a.sort((x, y) => fpIncl(y) * buyOf(y) - fpIncl(x) * buyOf(x));
+    if (mode === 'todo') a.sort((x, y) => (!!x.cat) - (!!y.cat));
+    return a;
+  }
+  function toolbarHtml(g, all) {
+    const todo = all.filter(i => !i.cat).length, mode = (g.id ? g.sort : state.uSort) || 'lock';
+    const cls = 'min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-2.5 text-sm font-bold text-slate-700 lg:py-1.5 lg:text-xs';
+    return `<div class="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 lg:flex lg:flex-wrap lg:items-center">
+      <span class="col-span-2 text-xs font-bold text-slate-600">⚡ 整組套用<span class="font-normal text-slate-400 lg:hidden">・一次設定這家店的商品</span></span>
+      <select data-gapcat class="${cls}" ${todo ? '' : 'disabled'}>
+        <option value="">${todo ? `分類 → 未分類的 ${todo} 件` : '分類（都分好了）'}</option>
+        ${state.cats.map(c => `<option value="${escapeHtml(c)}">${catIcon(c)} ${escapeHtml(c)}</option>`).join('')}
+      </select>
+      <select data-gaptag class="${cls}" ${state.tags.length ? '' : 'disabled'}>
+        <option value="">${state.tags.length ? `標籤 → 全部 ${all.length} 件` : '先到標籤庫新增標籤'}</option>
+        ${state.tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('')}
+      </select>
+      ${all.every(i => i.cur === 'JPY') && all.some(i => i.fp > 0 && i.sell > 0) ? `<select data-gapquote class="${cls} col-span-2 lg:col-span-1">
+        <option value="">💴 整組改用報價匯率…</option>
+        ${[0.26, 0.27, 0.28, 0.29].map(r => `<option value="${r}">報價匯率 ${r.toFixed(2)}</option>`).join('')}
+        <option value="custom">自訂匯率…</option>
+      </select>` : ''}
+      <select data-gsort class="${cls} hidden lg:block lg:ml-auto">
+        ${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${k === mode ? 'selected' : ''}>↕ ${v}</option>`).join('')}
+      </select>
+    </div>`;
+  }
+  function groupHtml(g, all, shown) {
+    const isU = !g.id, open = isU ? state.ungroupedOpen : g.open;
+    const buys = all.reduce((s2, i) => s2 + buyOf(i), 0);
+    const prof = all.reduce((s2, i) => s2 + i.profit * i.qty, 0);
+    const sm = sums(all), todo = all.filter(i => !i.cat).length;
+    const chk = isU ? { html: '' } : receiptCheck(g, all);
+    return `
+    <section data-gid="${g.id}" class="rounded-2xl border ${isU ? 'border-dashed border-slate-300 bg-slate-100/60' : 'border-slate-300 bg-slate-50'} overflow-hidden">
+      <button type="button" data-gtoggle class="w-full px-3 pt-3 pb-2 text-left">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500 text-sm w-4">${open ? '▼' : '▶'}</span>
+          <span class="font-black truncate">${isU ? '📥 未指定店家' : '🧾 ' + escapeHtml(g.name)}${g.taxFree ? ' <span class="rounded bg-sky-100 px-1 text-[10px] text-sky-700">免稅</span>' : ''}</span>
+          <span class="num ml-auto shrink-0 text-xs text-slate-500">${all.length} 樣・${buys} 件${todo ? `・<span class="text-sky-600">${todo} 未分類</span>` : ''}</span>
+        </div>
+        <div class="num mt-1 pl-6 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600">
+          <span>含稅小計 <b class="text-slate-800">${fmtCur(sm.incl)}</b></span>
+          <span>淨利 <b class="${prof < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmt(prof)}</b></span>
+          ${chk.html}
+        </div>
+      </button>
+      ${open ? `
+      <div class="px-3 pb-3 space-y-3">
+        ${!isU ? `
+        <div class="rounded-xl bg-white border border-slate-200 px-3 py-2 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-600 shrink-0">🧾 發票合計${sm.curs.length === 1 ? ' ' + sm.curs[0] : ''}</span>
+            <input data-receipt type="number" inputmode="decimal" value="${g.receipt ?? ''}" placeholder="照發票上的總額填" class="num flex-1 min-w-0 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-right font-bold focus:outline-none focus:border-amber-500">
+          </div>
+          <div class="flex items-center gap-3 text-[11px] text-slate-500">
+            <label class="flex items-center gap-1"><input data-gtaxfree type="checkbox" ${g.taxFree ? 'checked' : ''} class="w-4 h-4 accent-sky-600"> 免稅店</label>
+            <span class="num">未稅小計 ${fmtCur(sm.excl)}</span>
+            <span class="ml-auto flex gap-1">
+              <button type="button" data-grename class="rounded-md bg-slate-100 px-2 py-1" aria-label="改名">✏️</button>
+              <button type="button" data-gdel class="rounded-md bg-slate-100 px-2 py-1" aria-label="刪除店家">🗑️</button>
+            </span>
+          </div>
+        </div>` : (all.length && state.groups.length ? '<p class="text-xs text-slate-500">按住卡片上的「⠿ 按住拖曳換店」，拖到下方出現的店家按鈕上放開</p>' : '')}
+        ${all.length ? toolbarHtml(g, all) : ''}
+        ${shown.length ? `<div class="space-y-1.5">${sortList(shown, (g.id ? g.sort : state.uSort) || 'lock').map(it => it.id == state.expandedId ? cardHtml(it) : rowHtml(it)).join('')}</div>` : (all.length ? '<p class="text-xs text-slate-400 text-center py-2">這家店都分類好了</p>' : '<p class="text-xs text-slate-400 text-center py-3">這家店還沒有商品</p>')}
+        ${!isU ? `<button type="button" data-gaddItem class="w-full rounded-xl border-2 border-dashed border-slate-300 py-2.5 text-sm font-bold text-slate-600 active:bg-white">＋ 發票上有、但漏記的商品</button>` : ''}
+      </div>` : ''}
+    </section>`;
+  }
+  function renderSort() {
+    const { n } = sortProgress();
+    renderBulkBar();
+    if ($('tab-sort').hidden) return;
+    const only = $('sortOnlyTodo').checked;
+    const ordered = state.items.slice().reverse(); // 依鎖定順序，方便對發票
+    const visible = it => !only || !it.cat;
+    const sections = [{ id: '', name: '未分組' }].concat(state.groups).map(g => {
+      const all = ordered.filter(it => (it.group || '') === g.id);
+      return { g, all, shown: all.filter(visible) };
+    }).filter(x => x.g.id || x.all.length);
+    const anyShown = sections.some(x => x.shown.length);
+    $('sortEmpty').classList.toggle('hidden', !!n && (anyShown || !only));
+    $('sortEmpty').innerHTML = !n ? '今天還沒有鎖定商品<br>先到「🧮 現場算盤」拍照定價，或建立群組後在群組內補商品' : '🎉 全部分類完成！<br>取消勾選「只看未分類」可再檢視';
+    $('sortList').innerHTML = n || state.groups.length ? sections.map(x => groupHtml(x.g, x.all, x.shown)).join('') : '';
+  }
+  function renderBulkBar() {
+    [...state.bulk].forEach(id => { if (!state.items.some(i => String(i.id) === id)) state.bulk.delete(id); });
+    const k = state.bulk.size;
+    $('bulkBar').classList.toggle('hidden', !k || $('tab-sort').hidden);
+    if (!k) return;
+    $('bulkCount').textContent = `已選 ${k} 件`;
+    $('bulkCat').innerHTML = '<option value="">設成哪個分類？</option>' + state.cats.map(c => `<option value="${escapeHtml(c)}">${catIcon(c)} ${escapeHtml(c)}</option>`).join('');
+    $('bulkTag').innerHTML = '<option value="">加上哪個標籤？</option>' + state.tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
+    $('bulkGroup').innerHTML = '<option value="">移到哪一家店？</option><option value="__none">📥 未指定店家</option>' +
+      state.groups.map(g => `<option value="${g.id}">🧾 ${escapeHtml(g.name)}</option>`).join('') + '<option value="__new">＋ 新店家…</option>';
+  }
+  const selItems = () => state.items.filter(i => state.bulk.has(String(i.id)));
+  $('bulkCat').onchange = e => { const c = e.target.value; if (!c) return; selItems().forEach(i => i.cat = c); toast(`已把 ${state.bulk.size} 件設為「${c}」`, 1800); e.target.value = ''; renderSort(); save(); };
+  $('bulkTag').onchange = e => { const t = e.target.value; if (!t) return; selItems().forEach(i => { if (!(i.tags || []).includes(t)) i.tags = [...(i.tags || []), t]; }); toast(`已替 ${state.bulk.size} 件加上 #${t}`, 1800); e.target.value = ''; renderSort(); save(); };
+  $('bulkGroup').onchange = e => {
+    let v = e.target.value; if (!v) return;
+    if (v === '__new') { const g = newGroup(); if (!g) { e.target.value = ''; return; } v = g.id; }
+    if (v === '__none') v = '';
+    const ids = [...state.bulk]; state.bulk.clear(); moveItems(ids, v);
+    toast(`已移動 ${ids.length} 件到「${v ? groupName(v) : '未指定店家'}」`, 1800);
+  };
+  $('bulkCancel').onclick = () => { state.bulk.clear(); renderSort(); };
+  $('groupAdd').onclick = () => {
+    const ids = [...state.bulk];
+    const g = newGroup(ids); if (!g) return;
+    state.bulk.clear(); moveItems([], g.id);
+    if (ids.length) toast(`已建立「${g.name}」並移入 ${ids.length} 件`);
+  };
+  $('groupFoldAll').onclick = () => {
+    const anyOpen = state.ungroupedOpen || state.groups.some(g => g.open);
+    state.ungroupedOpen = !anyOpen; state.groups.forEach(g => g.open = !anyOpen);
+    $('groupFoldAll').textContent = anyOpen ? '全部展開' : '全部收起';
+    renderSort(); save();
+  };
+  $('sortList').addEventListener('click', e => {
+    if (dragJustEnded) return;
+    const sec = e.target.closest('[data-gid]');
+    const g = sec && state.groups.find(x => x.id === sec.dataset.gid);
+    if (e.target.closest('[data-gtoggle]')) {
+      if (g) g.open = !g.open; else state.ungroupedOpen = !state.ungroupedOpen;
+      renderSort(); save(); return;
+    }
+    if (g && e.target.closest('[data-grename]')) {
+      const nm = (prompt('群組名稱', g.name) || '').trim(); if (nm) { g.name = nm; renderSort(); renderList(); renderStoreBar(); save(); } return;
+    }
+    if (g && e.target.closest('[data-gdel]')) {
+      if (!confirm(`刪除群組「${g.name}」？裡面的商品會回到「未分組」，不會被刪除。`)) return;
+      state.items.forEach(it => { if (it.group === g.id) it.group = ''; });
+      state.groups = state.groups.filter(x => x !== g); recalcItems(); renderSort(); renderList(); renderDashboard(true); return;
+    }
+    if (g && e.target.closest('[data-grecon]')) { g.recon = !g.recon; renderSort(); save(); return; }
+    if (g && e.target.closest('[data-grcclear]')) { state.items.forEach(it => { if (it.group === g.id) it.rc = false; }); renderSort(); save(); return; }
+    if (g && e.target.closest('[data-gadditem]')) { openSheet(g.id); return; }
+    const rt = e.target.closest('[data-rowtoggle]');
+    if (rt) { const c = rt.closest('[data-id]'); state.expandedId = state.expandedId == c.dataset.id ? null : c.dataset.id; renderSort();
+      const el = document.querySelector(`#sortList [data-id="${state.expandedId}"]`); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+    if (e.target.closest('[data-collapse]')) { state.expandedId = null; renderSort(); return; }
+    const ed = e.target.closest('[data-edit]');
+    if (ed) { const c = ed.closest('[data-id]'); if (c) openSheet('', c.dataset.id); return; }
+    const card = e.target.closest('[data-id]'); if (!card) return;
+    const it = state.items.find(i => i.id == card.dataset.id); if (!it) return;
+    if (e.target.matches('[data-bulk]')) {
+      const id = String(it.id);
+      e.target.checked ? state.bulk.add(id) : state.bulk.delete(id);
+      renderSort(); return;
+    }
+    const c = e.target.closest('[data-scat]'), t = e.target.closest('[data-stag]');
+    if (c) { it.cat = it.cat === c.dataset.scat ? '' : c.dataset.scat; }
+    else if (t) { const v = t.dataset.stag; it.tags = (it.tags || []).includes(v) ? it.tags.filter(x => x !== v) : [...(it.tags || []), v]; }
+    else if (e.target.closest('[data-zoom]')) { $('lightboxImg').src = it.photo; $('lightbox').classList.replace('hidden', 'flex'); return; }
+    else return;
+    if (navigator.vibrate) navigator.vibrate(8);
+    if ($('sortOnlyTodo').checked && c && it.cat) { card.style.opacity = .4; setTimeout(renderSort, 350); sortProgress(); }
+    else renderSort();
+    save();
+  });
+  $('sortList').addEventListener('change', e => {
+    const sec = e.target.closest('[data-gid]');
+    const g = sec && state.groups.find(x => x.id === sec.dataset.gid);
+    if (sec && e.target.matches('[data-gapquote]')) {
+      let r = e.target.value; e.target.value = ''; if (!r) return;
+      if (r === 'custom') { r = prompt('輸入報價匯率（例：0.275）', '0.27'); if (r == null) return; }
+      r = parseFloat(r); if (!(r > 0)) { toast('匯率格式不正確'); return; }
+      const gid = sec.dataset.gid;
+      const list = state.items.filter(i => (i.group || '') === gid && i.fp > 0 && i.sell > 0);
+      if (!list.length) return;
+      const plan = list.map(i => ({ i, ns: Math.ceil(fpIncl(i) * r / 10) * 10 }));
+      const before = list.reduce((a, i) => a + i.profit * i.qty, 0);
+      const after = plan.reduce((a, x) => a + profitOf(x.ns, fpIncl(x.i), x.i.rate, x.i.ship) * x.i.qty, 0);
+      const low = plan.filter(x => x.ns < Math.ceil(floorOf(fpIncl(x.i), x.i.rate, x.i.ship))).length;
+      const sg = v => (v >= 0 ? '+' : '−') + fmt(Math.abs(v)).replace('NT$ ', 'NT$ ');
+      const msg = `把「${gid ? groupName(gid) : '未指定店家'}」的 ${list.length} 件一般商品，售價全部改成「含稅價 × ${r}」？\n\n` +
+        `這組淨利：${fmt(before)} → ${fmt(after)}（${sg(after - before)}）` + (low ? `\n⚠️ 其中 ${low} 件會低於保命底線` : '') +
+        `\n\n贈品（售價或外幣價為 0）不會被更動。`;
+      if (!confirm(msg)) return;
+      plan.forEach(x => { x.i.sell = x.ns; x.i.profit = profitOf(x.ns, fpIncl(x.i), x.i.rate, x.i.ship); });
+      renderSort(); renderList(); renderDashboard(true);
+      toast(`已更新 ${list.length} 件售價（報價匯率 ${r}）`, 2500); return;
+    }
+    if (sec && e.target.matches('[data-gapcat], [data-gaptag], [data-gsort]')) {
+      const gid = sec.dataset.gid, v = e.target.value;
+      const list = state.items.filter(i => (i.group || '') === gid);
+      if (e.target.matches('[data-gsort]')) { if (g) g.sort = v; else state.uSort = v; renderSort(); save(); return; }
+      if (!v) return;
+      if (e.target.matches('[data-gapcat]')) { const t = list.filter(i => !i.cat); t.forEach(i => i.cat = v); toast(`已把 ${t.length} 件未分類設為「${v}」`, 1800); }
+      else { let n = 0; list.forEach(i => { if (!(i.tags || []).includes(v)) { i.tags = [...(i.tags || []), v]; n++; } }); toast(`已替 ${n} 件加上 #${v}`, 1800); }
+      renderSort(); save(); return;
+    }
+    if (g && e.target.matches('[data-receipt]')) { g.receipt = e.target.value === '' ? null : Number(e.target.value); renderSort(); save(); return; }
+    if (g && e.target.matches('[data-gtaxfree]')) { g.taxFree = e.target.checked; refreshAll(true); return; }
+    const card = e.target.closest('[data-id]'); if (!card) return;
+    const it = state.items.find(i => i.id == card.dataset.id); if (!it) return;
+    if (e.target.matches('[data-name]')) it.name = e.target.value.trim() || it.name;
+    if (e.target.matches('[data-sqty]')) { it.qty = Math.max(0, parseInt(e.target.value) || 0); renderDashboard(true); renderSort(); }
+    if (e.target.matches('[data-sbuy]')) { it.buy = Math.max(0, parseInt(e.target.value) || 0); renderDashboard(true); renderSort(); }
+    save();
+  });
+
+  // ---- 拖曳換店（手機觸控＋滑鼠） ----
+  let drag = null, dragJustEnded = false;
+  const dropCls = on => 'rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ' +
+    (on ? 'border-amber-400 bg-amber-400 text-slate-900 scale-105' : 'border-slate-600 bg-slate-800 text-white');
+  function showDock(curGid) {
+    const opts = [{ id: '', name: '📥 未指定店家' }].concat(state.groups.map(g => ({ id: g.id, name: '🧾 ' + g.name })));
+    $('dropTargets').innerHTML = opts.filter(o => o.id !== curGid)
+      .map(o => `<div data-drop-gid="${o.id}" class="${dropCls(false)}">${escapeHtml(o.name)}</div>`).join('') +
+      `<div data-drop-gid="__new" class="${dropCls(false)} border-dashed">＋ 新店家</div>`;
+    $('dropDock').classList.remove('hidden');
+  }
+  $('sortList').addEventListener('pointerdown', e => {
+    const h = e.target.closest('[data-drag]'); if (!h) return;
+    const card = h.closest('[data-id]'); if (!card) return;
+    const it = state.items.find(i => i.id == card.dataset.id); if (!it) return;
+    e.preventDefault();
+    const ghost = document.createElement('div');
+    ghost.className = 'fixed z-[70] pointer-events-none flex items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-2xl ring-2 ring-amber-400';
+    ghost.innerHTML = (it.photo ? `<img src="${it.photo}" class="w-9 h-9 rounded-md object-cover">` : '<span class="text-xl">🛍️</span>') +
+      `<span class="max-w-[12rem] truncate text-sm font-bold">${escapeHtml(it.name)}</span>`;
+    document.body.appendChild(ghost);
+    card.style.opacity = '.35';
+    drag = { id: it.id, from: it.group || '', ghost, card, target: null, x: e.clientX, y: e.clientY, raf: null };
+    moveGhost();
+    showDock(drag.from);
+    try { h.setPointerCapture(e.pointerId); } catch (_) {}
+    if (navigator.vibrate) navigator.vibrate(15);
+    const loop = () => {
+      if (!drag) return;
+      const dockTop = $('dropDock').getBoundingClientRect().top;
+      const top = (window.matchMedia('(min-width: 1024px)').matches ? 0 : $('topBar').getBoundingClientRect().bottom) + 60;
+      if (drag.y < top) window.scrollBy(0, -Math.min(16, (top - drag.y) / 3 + 3));
+      else if (drag.y > dockTop - 40 && drag.y < dockTop) window.scrollBy(0, 12);
+      hit(); drag.raf = requestAnimationFrame(loop);
+    };
+    drag.raf = requestAnimationFrame(loop);
+  });
+  function moveGhost() {
+    const w = drag.ghost.offsetWidth || 180;
+    drag.ghost.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, drag.x - w / 2)) + 'px';
+    drag.ghost.style.top = (drag.y - 64) + 'px';
+  }
+  function hit() {
+    const el = document.elementFromPoint(drag.x, drag.y);
+    const zone = el && (el.closest('[data-drop-gid]') || el.closest('#sortList section[data-gid]'));
+    if (drag.target === zone) return;
+    if (drag.target) {
+      if (drag.target.dataset.dropGid != null) drag.target.className = dropCls(false) + (drag.target.dataset.dropGid === '__new' ? ' border-dashed' : '');
+      else drag.target.classList.remove('ring-4', 'ring-amber-400');
+    }
+    drag.target = zone;
+    if (zone) {
+      if (zone.dataset.dropGid != null) zone.className = dropCls(true);
+      else zone.classList.add('ring-4', 'ring-amber-400');
+    }
+  }
+  window.addEventListener('pointermove', e => { if (!drag) return; drag.x = e.clientX; drag.y = e.clientY; moveGhost(); });
+  const endDrag = () => {
+    if (!drag) return;
+    cancelAnimationFrame(drag.raf);
+    const d = drag; drag = null;
+    d.ghost.remove(); d.card.style.opacity = '';
+    if (d.target && d.target.dataset.dropGid == null) d.target.classList.remove('ring-4', 'ring-amber-400');
+    $('dropDock').classList.add('hidden');
+    dragJustEnded = true; setTimeout(() => dragJustEnded = false, 80);
+    if (!d.target) return;
+    let gid = d.target.dataset.dropGid != null ? d.target.dataset.dropGid : d.target.dataset.gid;
+    if (gid === '__new') { const g = newGroup(); if (!g) return; gid = g.id; }
+    if (gid === d.from) return;
+    moveItems([d.id], gid);
+    if (navigator.vibrate) navigator.vibrate(25);
+    toast(`已移到「${gid ? groupName(gid) : '未指定店家'}」`, 1800);
+  };
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+  // ---- 群組內補商品 ----
+  let sheetGid = '', sheetPhoto = null, sheetEdit = null, sheetOrig = null;
+  const SH_MARKUPS = [1.15, 1.25, 1.35, 1.5], SH_QUOTES = [0.26, 0.27, 0.28, 0.29];
+  function openSheet(gid, editId) {
+    const it = editId != null ? state.items.find(i => i.id == editId) : null;
+    sheetEdit = it; sheetGid = it ? (it.group || '') : gid; sheetPhoto = it ? it.photo : null;
+    sheetOrig = it ? { sell: it.sell, fp: it.fp, rate: it.rate, ship: it.ship, jt: it.jt || 'std' } : null;
+    $('shQuickBody').classList.add('hidden'); $('shQuickArrow').textContent = '▾';
+    $('sheetTitle').textContent = it ? `✏️ 修改「${it.name}」` : `＋ 補一件到「${groupName(gid)}」`;
+    $('shCur').textContent = it ? it.cur : $('currency').value;
+    $('shName').value = it ? it.name : ''; $('shFp').value = it ? it.fp : ''; $('shSell').value = it ? it.sell : '';
+    $('shRate').value = it ? it.rate : val('rate'); $('shShip').value = it ? it.ship : val('shipping');
+    $('shBuy').value = it ? buyOf(it) : 1; $('shQty').value = it ? it.qty : 1; $('shJt').value = it ? (it.jt || 'std') : 'std';
+    $('shPhotoPrev').classList.toggle('hidden', !sheetPhoto); if (sheetPhoto) $('shPhotoPrev').src = sheetPhoto;
+    $('shSave').textContent = it ? '✓ 儲存修改' : '✓ 加入這個群組';
+    $('shDelete').classList.toggle('hidden', !it);
+    $('sheet').classList.remove('hidden');
+    sheetCalc();
+    setTimeout(() => (it ? $('shFp') : $('shName')).focus(), 150);
+  }
+  const closeSheet = () => $('sheet').classList.add('hidden');
+  document.querySelectorAll('[data-sheet-close]').forEach(b => b.onclick = closeSheet);
+  $('shPhotoBtn').onclick = () => $('shPhotoIn').click();
+  $('shPhotoIn').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    compressImage(f, 400).then(u => { sheetPhoto = u; if (u) { $('shPhotoPrev').src = u; $('shPhotoPrev').classList.remove('hidden'); } });
+    e.target.value = '';
+  };
+  function sheetCalc() {
+    const fpRaw = $('shFp').value.trim(), sellRaw = $('shSell').value.trim();
+    const fp = parseFloat(fpRaw) || 0, sell = parseFloat(sellRaw) || 0;
+    const kind = fpRaw !== '' && fp === 0 && sell > 0 ? 'freebie' : sellRaw !== '' && sell === 0 && fp > 0 ? 'giveaway' : 'normal';
+    $('shKindNow').innerHTML = kind === 'giveaway' ? '<span class="text-violet-700">→ 這件會記為 🎁 活動贈品</span>'
+      : kind === 'freebie' ? '<span class="text-emerald-700">→ 這件會記為 🆓 店家贈品</span>' : '';
+    const fpi = fp * (1 + jtaxOf($('shJt').value, sheetGid));
+    const rate = parseFloat($('shRate').value) || 0, ship = parseFloat($('shShip').value) || 0;
+    $('shFloor').textContent = kind === 'giveaway' ? '不販售' : (fp || kind === 'freebie') ? fmt(Math.ceil(floorOf(fpi, rate, ship))) : '—';
+    const p = kind === 'giveaway' ? (fp ? profitOf(0, fpi, rate, ship) : null) : sell ? profitOf(sell, fpi, rate, ship) : null;
+    $('shProfit').innerHTML = p == null ? `<span class="text-slate-500">${KIND_HINT[kind]}</span>`
+      : kind === 'giveaway' ? `🎁 每件行銷成本 <b class="text-violet-700">${fmt(-p)}</b>・含稅 ${$('shCur').textContent} ${fmtN(fpi)}`
+      : `單件真實淨利 <b class="${p < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmt(p)}</b>・含稅 ${$('shCur').textContent} ${fmtN(fpi)}`;
+    $('shSave').disabled = !(kind === 'giveaway' ? fp > 0 : kind === 'freebie' ? sell > 0 : fp > 0 && sell > 0);
+    $('shSave').title = $('shSave').disabled ? '外幣價與售價至少要填一個（另一個可以填 0）' : '';
+    // ---- 快速定價 ----
+    const cur = $('shCur').textContent, floor = floorOf(fpi, rate, ship), gw = kind === 'giveaway';
+    $('shQuote').innerHTML = fpi > 0 && sell > 0 ? `${cur} 報價匯率 <b class="text-slate-800">${(sell / fpi).toFixed(4)}</b>` : '';
+    $('shQuickNote').classList.toggle('hidden', !gw);
+    const btn = (attr, v, top, price) => {
+      const low = price && price < Math.ceil(floor), on = price && price === sell;
+      return `<button type="button" ${attr}="${v}" ${price ? '' : 'disabled'} class="rounded-lg py-1.5 text-xs font-bold leading-tight active:scale-95 ${gw ? 'opacity-60 ' : ''}${
+        on ? 'bg-amber-500 text-slate-900' : low ? 'bg-red-50 text-red-600 ring-1 ring-red-300' : 'bg-white text-slate-800 ring-1 ring-slate-200'} disabled:opacity-40">${top}${
+        price ? `<span class="num block text-[11px] font-normal">${low ? '⚠️ ' : ''}${price.toLocaleString('zh-TW')}</span>` : ''}</button>`;
+    };
+    const hasBase = fpi > 0 || kind === 'freebie' || (gw && fp > 0);
+    $('shMk').innerHTML = SH_MARKUPS.map(m => btn('data-shm', m, `+${Math.round((m - 1) * 100)}%`, hasBase ? Math.ceil(floor * m / 10) * 10 : 0)).join('');
+    const jpy = cur === 'JPY';
+    $('shQrRow').classList.toggle('hidden', !jpy || !(fpi > 0));
+    $('shQr').innerHTML = SH_QUOTES.map(r => btn('data-shq', r, r.toFixed(2), fpi > 0 ? Math.ceil(fpi * r / 10) * 10 : 0)).join('');
+    // 跟原售價比較
+    const o = sheetOrig;
+    $('shOrigRow').classList.toggle('hidden', !o);
+    if (o) {
+      $('shRestore').textContent = `↩ 還原原售價 ${o.sell.toLocaleString('zh-TW')}`;
+      $('shRestore').disabled = sell === o.sell;
+      $('shRestore').classList.toggle('opacity-40', sell === o.sell);
+      const oFpi = o.fp * (1 + jtaxOf(o.jt, sheetGid));
+      const dSell = sell - o.sell, dProf = (sell ? profitOf(sell, fpi, rate, ship) : 0) - profitOf(o.sell, oFpi, o.rate, o.ship);
+      const sg = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(Math.round(v)).toLocaleString('zh-TW');
+      $('shDiff').innerHTML = dSell === 0 && Math.abs(dProf) < 0.5 ? '與原售價相同'
+        : `比原價 <b class="${dSell >= 0 ? 'text-emerald-600' : 'text-red-600'}">${sg(dSell)}</b>（淨利 <b class="${dProf >= 0 ? 'text-emerald-600' : 'text-red-600'}">${sg(dProf)}</b>）`;
+    }
+  }
+  $('shQuickToggle').onclick = () => { const b = $('shQuickBody'); b.classList.toggle('hidden'); $('shQuickArrow').textContent = b.classList.contains('hidden') ? '▾' : '▴'; };
+  $('shQuick').addEventListener('click', e => {
+    const m = e.target.closest('[data-shm]'), q = e.target.closest('[data-shq]');
+    if (!m && !q) return;
+    const fp = parseFloat($('shFp').value) || 0, fpi = fp * (1 + jtaxOf($('shJt').value, sheetGid));
+    const rate = parseFloat($('shRate').value) || 0, ship = parseFloat($('shShip').value) || 0;
+    $('shSell').value = m ? Math.ceil(floorOf(fpi, rate, ship) * parseFloat(m.dataset.shm) / 10) * 10 : Math.ceil(fpi * parseFloat(q.dataset.shq) / 10) * 10;
+    sheetCalc();
+  });
+  $('shRestore').onclick = () => { if (sheetOrig) { $('shSell').value = sheetOrig.sell; sheetCalc(); } };
+  ['shFp', 'shSell', 'shJt', 'shRate', 'shShip'].forEach(id => $(id).addEventListener('input', sheetCalc));
+  $('shSave').onclick = () => {
+    const fp = Math.max(0, parseFloat($('shFp').value) || 0), sell = Math.max(0, parseFloat($('shSell').value) || 0);
+    if (!fp && !sell) return;
+    const rate = parseFloat($('shRate').value) || val('rate'), ship = Math.max(0, parseFloat($('shShip').value) || 0), jt = $('shJt').value;
+    const buy = Math.max(0, parseInt($('shBuy').value) || 0), qty = Math.max(0, parseInt($('shQty').value) || 0);
+    if (sheetEdit) {
+      const it = sheetEdit;
+      const prevKind = kindOf(it);
+      Object.assign(it, { name: $('shName').value.trim() || it.name, photo: sheetPhoto, fp, rate, ship, sell, jt, buy, qty, rc: false });
+      it.profit = profitOf(sell, fpIncl(it), rate, ship);
+      const nk = kindOf(it);
+      if (nk !== prevKind) {
+        if (KIND_CAT[nk] && state.cats.includes(KIND_CAT[nk])) it.cat = KIND_CAT[nk];
+        else if (nk === 'normal' && Object.values(KIND_CAT).includes(it.cat)) it.cat = '';
+      }
+      const learned = it.demo && !state.demoTried && nk !== 'normal';
+      if (it.demo) state.demoTried = true;
+      closeSheet(); renderSort(); renderList(); renderDashboard(true);
+      toast(learned ? `🎉 學會了！「${it.name}」變成${nk === 'giveaway' ? ' 🎁 活動贈品' : ' 🆓 店家贈品'}，到「📊 分析匯出」看看淨利的變化` : `✓ 已更新「${it.name}」`, learned ? 4500 : 3500); return;
+    }
+    state.items.unshift({ id: state.nextId++, name: $('shName').value.trim() || `補登商品 #${state.nextId - 1}`, photo: sheetPhoto,
+      cur: $('currency').value, fp, rate, ship, sell, jt, group: sheetGid, buy, qty, rc: false,
+      profit: profitOf(sell, fp * (1 + jtaxOf(jt, sheetGid)), rate, ship), tags: [], date: todayStr(),
+      cat: (() => { const k = !fp ? 'freebie' : !sell ? 'giveaway' : 'normal'; return KIND_CAT[k] && state.cats.includes(KIND_CAT[k]) ? KIND_CAT[k] : ''; })() });
+    closeSheet(); renderSort(); renderList(); renderDashboard(true);
+    toast(`✓ 已補進「${groupName(sheetGid)}」`);
+  };
+  $('shDelete').onclick = () => {
+    const it = sheetEdit; if (!it || !confirm(`刪除「${it.name}」？此動作無法復原。`)) return;
+    state.items = state.items.filter(i => i !== it);
+    closeSheet(); renderSort(); renderList(); renderDashboard(true); toast('已刪除');
+  };
+  $('sortOnlyTodo').onchange = renderSort;
+  $('goStats').onclick = () => showTab('stats');
+
+  // ---------- 📊 分析 ----------
+  function statGroup(keyFn) {
+    const m = new Map();
+    state.items.forEach(it => keyFn(it).forEach(k => {
+      const g = m.get(k) || { key: k, cnt: 0, qty: 0, rev: 0, prof: 0 };
+      g.cnt++; g.qty += it.qty; g.rev += it.sell * it.qty; g.prof += it.profit * it.qty; m.set(k, g);
+    }));
+    return [...m.values()].sort((a, b) => b.prof - a.prof);
+  }
+  function barRows(groups, labelFn, fill, total, colorFn) {
+    if (!groups.length) return '<p class="text-sm text-slate-400">還沒有資料</p>';
+    const max = Math.max(...groups.map(g => Math.abs(g.prof)), 1);
+    return groups.map(g => {
+      const w = Math.max(2, Math.abs(g.prof) / max * 100), neg = g.prof < 0;
+      const share = total > 0 ? ` · ${(g.prof / total * 100).toFixed(0)}%` : '';
+      return `<button type="button" class="bar-row block w-full text-left transition-opacity" ${colorFn ? `data-key="${escapeHtml(g.key)}"` : ''}>
+        <div class="flex items-baseline justify-between gap-2 text-sm"><span class="font-bold truncate">${labelFn(g.key)}</span>
+          <span class="num shrink-0 text-slate-700">${neg ? '▼ ' : ''}${fmt(g.prof)}<span class="text-xs text-slate-500">${share}</span></span></div>
+        <div class="mt-1 h-3 w-full rounded bg-slate-100"><div class="h-3 rounded-r ${neg ? 'bg-red-500' : colorFn ? '' : fill}" style="width:${w}%;${!neg && colorFn ? `background:${colorFn(g.key)}` : ''}"></div></div>
+        <div class="bar-detail hidden mt-1 text-xs text-slate-500 num">${g.cnt} 品項・喊單 ${g.qty} 件・營收 ${fmt(g.rev)}・毛利率 ${g.rev ? (g.prof / g.rev * 100).toFixed(1) : '0.0'}%</div>
+      </button>`;
+    }).join('');
+  }
+  ['catBars', 'tagBars'].forEach(id => $(id).addEventListener('click', e => {
+    const r = e.target.closest('.bar-row'); if (r) r.querySelector('.bar-detail').classList.toggle('hidden');
+  }));
+  function topList(arr, valFn, subFn) {
+    if (!arr.length) return '<li class="text-sm text-slate-400">還沒有資料</li>';
+    return arr.map((it, i) => `<li class="flex items-center gap-2.5">
+      <span class="num w-5 text-center text-sm font-black text-slate-500">${i + 1}</span>
+      ${it.photo ? `<img src="${it.photo}" class="w-9 h-9 rounded-md object-cover border border-slate-200" alt="">` : '<span class="w-9 h-9 rounded-md bg-slate-100 flex items-center justify-center">🛍️</span>'}
+      <span class="flex-1 min-w-0"><span class="block truncate text-sm font-bold">${escapeHtml(it.name)}</span><span class="block text-[11px] text-slate-500">${subFn(it)}</span></span>
+      <span class="num text-sm font-bold text-slate-800">${valFn(it)}</span></li>`).join('');
+  }
+  // ---- 分類圓餅：顏色跟著分類走（依分類清單順序），長條同色當圖例 ----
+  const CAT_SLOTS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+  const catColor = k => {
+    if (k === '未分類') return '#b8b6ae';
+    const i = state.cats.indexOf(k);
+    return i >= 0 && i < CAT_SLOTS.length ? CAT_SLOTS[i] : '#8a8880';
+  };
+  function catDonut(groups, total) {
+    const pos = groups.filter(g => g.prof > 0);
+    if (!pos.length) return '<div class="flex h-44 w-44 items-center justify-center rounded-full border-[14px] border-slate-100 text-center text-xs text-slate-400">還沒有<br>賺錢的分類</div>';
+    const sum = pos.reduce((a, g) => a + g.prof, 0);
+    const R = 70, C = 2 * Math.PI * R, GAP = pos.length > 1 ? 3 : 0;
+    let off = 0;
+    const segs = pos.map(g => {
+      const len = g.prof / sum * C, d = Math.max(0.5, len - GAP);
+      const el = `<circle class="seg" data-key="${escapeHtml(g.key)}" cx="90" cy="90" r="${R}" fill="none" stroke="${catColor(g.key)}" stroke-width="28"
+        stroke-dasharray="${d} ${C - d}" stroke-dashoffset="${-off}"><title>${escapeHtml(g.key)}：${fmt(g.prof)}（${(g.prof / sum * 100).toFixed(1)}%）</title></circle>`;
+      off += len; return el;
+    }).join('');
+    const top = pos[0];
+    return `<div class="relative" data-sum="${sum}">
+      <svg viewBox="0 0 180 180" class="w-48 h-48 -rotate-90" role="img" aria-label="分類淨利圓餅圖">${segs}</svg>
+      <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span data-c-label class="max-w-[7rem] truncate text-[11px] text-slate-500">總淨利</span>
+        <span data-c-val class="num text-base font-black text-slate-900">${fmt(total)}</span>
+        <span data-c-sub class="num text-[11px] text-slate-500">${pos.length} 個分類有獲利</span>
+      </div>
+    </div>`;
+  }
+  function bindCatViz(groups) {
+    const box = $('catDonut').closest('.viz'); if (!box) return;
+    const sum = groups.filter(g => g.prof > 0).reduce((a, g) => a + g.prof, 0);
+    const lab = box.querySelector('[data-c-label]'), v = box.querySelector('[data-c-val]'), sub = box.querySelector('[data-c-sub]');
+    if (!lab) return;
+    const init = [lab.textContent, v.textContent, sub.textContent];
+    let locked = null;
+    const on = key => {
+      box.classList.toggle('dim', key != null);
+      box.querySelectorAll('[data-key]').forEach(e => e.classList.toggle('on', e.dataset.key === key));
+      if (key == null) { [lab.textContent, v.textContent, sub.textContent] = init; return; }
+      const g = groups.find(x => x.key === key); if (!g) return;
+      lab.textContent = key; v.textContent = fmt(g.prof);
+      sub.textContent = g.prof > 0 && sum ? `佔獲利 ${(g.prof / sum * 100).toFixed(1)}%` : '虧損・不在圓餅內';
+    };
+    box.querySelectorAll('[data-key]').forEach(e => {
+      e.addEventListener('mouseenter', () => on(e.dataset.key));
+      e.addEventListener('mouseleave', () => on(locked));
+      e.addEventListener('click', () => { locked = locked === e.dataset.key ? null : e.dataset.key; on(locked); });
+    });
+  }
+  function renderStats() {
+    if ($('tab-stats').hidden) return;
+    renderResetHint(); renderBackupInfo();
+    const items = state.items;
+    const rev = items.reduce((s, i) => s + i.sell * i.qty, 0);
+    const prof = items.reduce((s, i) => s + i.profit * i.qty, 0);
+    const qty = items.reduce((s, i) => s + i.qty, 0);
+    const tax = items.reduce((s, i) => s + i.sell * TAX * i.qty, 0);
+    const fee = items.reduce((s, i) => s + i.sell * FEE * i.qty, 0);
+    const goal = val('travelCost') + val('opsCost');
+    const invQty = items.reduce((s, i) => s + Math.max(0, buyOf(i) - i.qty), 0);
+    const gwCost = items.filter(i => kindOf(i) === 'giveaway').reduce((s, i) => s - i.profit * i.qty, 0);
+    const invCost = items.reduce((s, i) => s + Math.max(0, buyOf(i) - i.qty) * (fpIncl(i) * i.rate + i.ship), 0);
+    const kpi = (label, value, sub, tone = 'text-slate-900') => `<div class="rounded-2xl bg-white border border-slate-200 p-3">
+      <p class="text-xs text-slate-500">${label}</p><p class="num text-xl font-black ${tone} leading-tight mt-0.5">${value}</p>
+      ${sub ? `<p class="num text-[11px] text-slate-500 mt-0.5">${sub}</p>` : ''}</div>`;
+    $('kpiGrid').innerHTML =
+      kpi('總淨利', fmt(prof), `打平目標 ${fmt(goal)}`, prof < 0 ? 'text-red-600' : 'text-emerald-600') +
+      kpi('達成率', (goal ? Math.max(0, prof / goal * 100) : 0).toFixed(1) + '%', prof >= goal && goal ? `🎉 倒賺 ${fmt(prof - goal)}` : `還差 ${fmt(goal - prof)}`) +
+      kpi('總營收', fmt(rev), `${items.length} 品項・${qty} 件`) +
+      kpi('整體毛利率', (rev ? prof / rev * 100 : 0).toFixed(1) + '%', `營業稅 ${fmt(tax)}・金流 ${fmt(fee)}`) +
+      kpi('購買／喊單', `${items.reduce((s, i) => s + buyOf(i), 0)}／${qty} 件`, '購買用來對發票，喊單用來算淨利') +
+      kpi('庫存（買了未賣）', `${invQty} 件`, `壓在庫存的成本 ${fmt(invCost)}` + (gwCost ? `・🎁 活動贈品成本 ${fmt(gwCost)}` : ''), invQty ? 'text-amber-600' : 'text-slate-900');
+    const todo = items.filter(i => !i.cat).length;
+    $('statsTodo').classList.toggle('hidden', !todo);
+    $('statsTodo').innerHTML = `🌙 還有 <b>${todo}</b> 個商品未分類，分析會先歸在「未分類」。<button id="statsGoSort" class="font-bold underline ml-1">去整理 →</button>`;
+    const sg = $('statsGoSort'); if (sg) sg.onclick = () => showTab('sort');
+    const catGroups = statGroup(it => [it.cat || '未分類']);
+    $('catDonut').innerHTML = catDonut(catGroups, prof);
+    $('catBars').innerHTML = barRows(catGroups, k => `${k === '未分類' ? '❔' : catIcon(k)} ${escapeHtml(k)}`, 'bg-emerald-500', prof, catColor);
+    bindCatViz(catGroups);
+    $('tagBars').innerHTML = barRows(statGroup(it => it.tags || []), k => '#' + escapeHtml(k), 'bg-amber-500', 0);
+    $('grpBars').innerHTML = state.groups.length
+      ? barRows(statGroup(it => [groupName(it.group || '')]), k => (k === '未分組' ? '📥 ' : '🧾 ') + escapeHtml(k), 'bg-sky-500', prof)
+      : '<p class="text-sm text-slate-400">還沒有群組</p>';
+    const byQty = items.slice().filter(i => i.qty > 0 && kindOf(i) !== 'giveaway').sort((a, b) => b.qty - a.qty).slice(0, 5);
+    const byProf = items.slice().sort((a, b) => b.profit * b.qty - a.profit * a.qty).slice(0, 5);
+    $('topProfit').innerHTML = topList(byProf, it => fmt(it.profit * it.qty), it => `喊單 ${it.qty} 件・單件 ${fmt(it.profit)}`);
+    $('topQty').innerHTML = topList(byQty, it => it.qty + ' 件', it => `小計淨利 ${fmt(it.profit * it.qty)}`);
+    const floorIt = it => Math.ceil((fpIncl(it) * it.rate + it.ship) / DIVISOR);
+    const loss = items.filter(it => kindOf(it) !== 'giveaway' && it.sell < floorIt(it));
+    $('lossBox').classList.toggle('hidden', !loss.length);
+    $('lossList').innerHTML = loss.map(it => `<li class="flex justify-between"><span class="truncate">${escapeHtml(it.name)}</span><span class="num shrink-0 text-red-700">售 ${fmt(it.sell)}／底線 ${fmt(floorIt(it))}</span></li>`).join('');
+  }
+
+  // ---------- 分頁切換 ----------
+  const TAB_KEY = 'daigou-warroom-tab';
+  function showTab(name) {
+    ['field', 'sort', 'stats'].forEach(t => $('tab-' + t).hidden = t !== name);
+    document.querySelectorAll('[data-sidetab]').forEach(b => {
+      b.className = 'sidetab flex items-center gap-3 rounded-xl px-4 py-3 text-left font-bold transition ' +
+        (b.dataset.sidetab === name ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-600 hover:bg-slate-100');
+    });
+    document.querySelectorAll('[data-tabbtn]').forEach(b => {
+      const on = b.dataset.tabbtn === name;
+      b.className = 'tabbtn py-2.5 text-center relative ' + (on ? 'text-amber-600' : 'text-slate-500');
+    });
+    // 整理／分析頁自動收起頂部卡，回現場恢復原本設定
+    let pref = null; try { pref = localStorage.getItem(COLLAPSE_KEY); } catch (e) {}
+    $('topBar').classList.toggle('collapsed', name !== 'field' || pref === '1');
+    $('collapseBtn').textContent = $('topBar').classList.contains('collapsed') ? '▼ 展開' : '▲ 收起';
+    if (name !== 'sort') state.bulk.clear();
+    renderBulkBar();
+    if (name === 'sort') renderSort();
+    if (name === 'stats') renderStats();
+    if (name === 'field') renderList();
+    window.scrollTo(0, 0);
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) {}
+  }
+  document.querySelectorAll('[data-tabbtn]').forEach(b => b.onclick = () => showTab(b.dataset.tabbtn));
+  document.querySelectorAll('[data-sidetab]').forEach(b => b.onclick = () => showTab(b.dataset.sidetab));
+
+  // ---------- 算盤 ----------
+  ['foreignPrice','sellPrice'].forEach(id => $(id).addEventListener('input', calc));
+
+  const quotePrice = r => { const fpi = val('foreignPrice') * (1 + jtaxOf(state.curJt, state.curGroup)); return Math.ceil(fpi * r / 10) * 10; };
+  document.querySelectorAll('.qrb').forEach(b => b.onclick = () => {
+    if (!val('foreignPrice')) { $('foreignPrice').focus(); return; }
+    $('sellPrice').value = quotePrice(parseFloat(b.dataset.qr)); calc();
+  });
+  function renderMarkupBtns(fp, floor, sell) {
+    document.querySelectorAll('.qm').forEach(b => {
+      const m = parseFloat(b.dataset.m), p = fp > 0 ? Math.ceil(floor * m / 10) * 10 : 0, on = p && p === sell;
+      b.className = 'qm rounded-lg py-1.5 text-sm font-bold leading-tight active:scale-95 ' + (on ? 'bg-amber-500 text-slate-900' : 'bg-slate-100 text-slate-800');
+      b.innerHTML = `+${Math.round((m - 1) * 100)}%${p ? `<span class="num block text-[11px] font-normal">NT$ ${p.toLocaleString('zh-TW')}</span>` : ''}`;
+    });
+  }
+  function renderQuoteBtns(fp, floor, sell) {
+    const jpy = $('currency').value === 'JPY';
+    $('quoteRow').classList.toggle('hidden', !jpy);
+    if (!jpy) return;
+    document.querySelectorAll('.qrb').forEach(b => {
+      const r = parseFloat(b.dataset.qr), p = fp > 0 ? Math.ceil(fp * r / 10) * 10 : 0;
+      const low = p && p < Math.ceil(floor), on = p && p === sell;
+      b.className = 'qrb rounded-lg py-1.5 text-sm font-bold leading-tight active:scale-95 ' +
+        (on ? 'bg-amber-500 text-slate-900' : low ? 'bg-red-50 text-red-600 ring-1 ring-red-300' : 'bg-slate-100 text-slate-800');
+      b.innerHTML = `${r.toFixed(2)}${p ? `<span class="num block text-[11px] font-normal">${low ? '⚠️ ' : ''}NT$ ${p.toLocaleString('zh-TW')}</span>` : ''}`;
+      b.title = low ? '低於保命底線，會虧損' : '';
+    });
+  }
+  document.querySelectorAll('.qm').forEach(b => b.onclick = () => {
+    const fp = val('foreignPrice'); if (!fp) { $('foreignPrice').focus(); return; }
+    const p = Math.ceil(floorOf(fp * (1 + jtaxOf(state.curJt, state.curGroup)), val('rate'), val('shipping')) * parseFloat(b.dataset.m) / 10) * 10;
+    $('sellPrice').value = p; calc();
+  });
+
+  function calc() {
+    updateSetupSummary();
+    const kind = 'normal';
+    const fp0 = val('foreignPrice'), rate = val('rate'), ship = val('shipping'), sell = val('sellPrice');
+    const t = jtaxOf(state.curJt, state.curGroup), fp = fp0 * (1 + t);
+    const g = state.groups.find(x => x.id === state.curGroup);
+    $('inclEcho').textContent = !$('jtaxOn').checked ? '（未加當地稅）' : (g && g.taxFree) ? '🏷️ 免稅店：不加稅'
+      : fp0 ? `含稅 ${$('currency').value} ${fmtN(fp)}（+${+(t * 100).toFixed(1)}%）` : `成本會加 ${+(t * 100).toFixed(1)}% 當地稅`;
+    document.querySelectorAll('#jtSeg [data-jt]').forEach(b => b.className = (b.dataset.jt === 'food' ? 'border-l border-slate-300 ' : '') + 'px-3 py-2 ' +
+      (b.dataset.jt === state.curJt ? 'bg-sky-600 text-white' : 'bg-white text-slate-700'));
+    const cost = costOf(fp, rate);
+    const floor = fp || kind === 'freebie' ? floorOf(fp, rate, ship) : 0;
+    $('costTwd').textContent = fmt(cost);
+    $('floorPrice').textContent = kind === 'giveaway' ? '不販售' : (fp || kind === 'freebie') ? fmt(Math.ceil(floor)) : '—';
+
+    const profit = kind === 'giveaway' ? (fp ? profitOf(0, fp, rate, ship) : 0) : sell > 0 ? profitOf(sell, fp, rate, ship) : 0;
+    const box = $('profitBox'), up = $('unitProfit');
+    up.textContent = (profit < 0 ? '-' : '') + fmt(Math.abs(profit));
+    $('bdTax').textContent = Math.round(sell * TAX);
+    $('bdFee').textContent = Math.round(sell * FEE);
+    $('bdCost').textContent = Math.round(cost + ship);
+    $('marginPct').textContent = sell ? `（毛利率 ${(profit / sell * 100).toFixed(1)}%）` : '';
+    renderMarkupBtns(fp, floor, sell);
+    renderQuoteBtns(fp, floor, sell);
+    // 報價匯率＝台幣售價 ÷ 含稅外幣價
+    const cur = $('currency').value;
+    $('quoteRate').innerHTML = fp > 0 && sell > 0
+      ? `${cur} 報價匯率 <b class="text-sm text-slate-900">${(sell / fp).toFixed(4)}</b>${rate > 0 ? `<span class="hidden text-slate-400 sm:inline">（刷卡匯率的 ${(sell / fp / rate).toFixed(2)} 倍）</span>` : ''}`
+      : fp > 0 ? `${cur} 報價匯率：輸入售價後顯示` : '';
+
+    const losing = kind !== 'giveaway' && sell > 0 && profit < 0;
+    up.className = 'num text-2xl font-black ' + (losing ? 'text-red-600' : 'text-emerald-600');
+    $('profitIcon').textContent = kind === 'giveaway' ? '🎁 行銷成本' : losing ? '🔴' : '🟢';
+    if (kind === 'giveaway') up.className = 'num text-2xl font-black text-violet-700';
+    box.className = 'rounded-xl p-3 border ' + (losing ? 'bg-red-50 border-red-500' : 'bg-slate-50 border-slate-200');
+
+    $('buyQty').textContent = state.buyQty;
+    const ok = kind === 'giveaway' ? fp > 0 : kind === 'freebie' ? sell > 0 : fp > 0 && sell > 0;
+    $('lockBtn').disabled = !ok;
+    $('lockHint').textContent = !ok ? (kind === 'giveaway' ? '請輸入外幣未稅價' : kind === 'freebie' ? '請輸入回台售價' : '請先輸入外幣原價與台幣售價')
+      : kind === 'giveaway' ? `🎁 鎖定後會從淨利扣掉 ${fmt(-profit * state.buyQty)} 行銷成本` : (losing ? '⚠️ 目前售價低於保命底線，鎖定後每賣一件都在虧' : '');
+    $('lockHint').className = 'text-xs text-center -mt-2 ' + (losing ? 'text-red-600' : 'text-slate-500');
+  }
+
+  // ---------- 鎖定 ----------
+  $('lockBtn').onclick = () => {
+    const kind = 'normal';
+    const fp = val('foreignPrice'), sell = val('sellPrice');
+    if (kind === 'normal' ? !fp || !sell : kind === 'giveaway' ? !fp : !sell) return;
+    const rate = val('rate'), ship = val('shipping');
+    state.items.unshift({
+      id: state.nextId++,
+      name: $('itemName').value.trim() || `商品 #${state.nextId - 1}`,
+      photo: state.photo,
+      cur: $('currency').value,
+      fp, rate, ship, sell,
+      jt: state.curJt, group: state.curGroup,
+      buy: state.buyQty, qty: state.buyQty, rc: false,
+      profit: profitOf(sell, fp * (1 + jtaxOf(state.curJt, state.curGroup)), rate, ship),
+      cat: '',
+      tags: [],
+      date: todayStr()
+    });
+    // 重置輸入，留在算盤準備下一件
+    $('foreignPrice').value = ''; $('sellPrice').value = ''; $('itemName').value = '';
+    state.buyQty = 1; state.curKind = 'normal';
+    $('clearPhoto').click();
+    calc(); renderList(); renderDashboard();
+    if (navigator.vibrate) navigator.vibrate(30);
+    const inStore = state.items.filter(i => (i.group || '') === state.curGroup);
+    const sub = inStore.reduce((a, i) => a + fpIncl(i) * buyOf(i), 0);
+    toast(`✓ 已加入第 ${state.items.length} 件・${state.curGroup ? groupName(state.curGroup) : '未指定店家'} 小計 ${$('currency').value} ${fmtN(sub)}`, 2500);
+    const isDesk = window.matchMedia('(min-width: 1024px)').matches;
+    const y = $('calcSec').getBoundingClientRect().top + window.scrollY - (isDesk ? 16 : $('topBar').offsetHeight + 8);
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  };
+  $('listFoldAll').onclick = () => {
+    const gids = [''].concat(state.groups.map(g => g.id)).filter(gid => state.items.some(i => (i.group || '') === gid));
+    const anyOpen = gids.some(isFieldOpen);
+    state.fieldOpen = {}; gids.forEach(g => state.fieldOpen[g] = !anyOpen);
+    renderList();
+  };
+  $('buyMinus').onclick = () => { state.buyQty = Math.max(1, state.buyQty - 1); calc(); };
+  $('buyPlus').onclick = () => { state.buyQty++; calc(); };
+  $('jtSeg').addEventListener('click', e => { const b = e.target.closest('[data-jt]'); if (!b) return; state.curJt = b.dataset.jt; calc(); save(); });
+
+  // ---------- 目前店家 ----------
+  function renderStoreBar() {
+    const sel = $('curGroup');
+    if (state.curGroup && !state.groups.some(g => g.id === state.curGroup)) state.curGroup = '';
+    sel.innerHTML = '<option value="">（未指定店家）</option>' +
+      state.groups.slice().reverse().map(g => `<option value="${g.id}">🧾 ${escapeHtml(g.name)}${g.taxFree ? '（免稅）' : ''}</option>`).join('');
+    sel.value = state.curGroup;
+    const g = state.groups.find(x => x.id === state.curGroup);
+    $('storeTaxFreeWrap').classList.toggle('opacity-40', !g);
+    $('storeTaxFree').disabled = !g; $('storeTaxFree').checked = !!(g && g.taxFree);
+    const inStore = state.items.filter(i => (i.group || '') === state.curGroup);
+    const sub = inStore.reduce((a, i) => a + fpIncl(i) * buyOf(i), 0);
+    const buys = inStore.reduce((a, i) => a + buyOf(i), 0);
+    $('storeSum').textContent = g ? `本店已記 ${inStore.length} 樣・${buys} 件・含稅 ${$('currency').value} ${fmtN(sub)}`
+      : '可不選，晚上再分組也可以';
+  }
+  $('curGroup').onchange = e => { state.curGroup = e.target.value; state.fieldOpen = {}; calc(); renderStoreBar(); renderList(); save(); };
+  $('storeNew').onclick = () => { const g = newGroup(); if (!g) return; state.curGroup = g.id; state.fieldOpen = {}; calc(); renderStoreBar(); renderList(); save(); toast(`已切換到「${g.name}」`); };
+  $('storeTaxFree').onchange = e => {
+    const g = state.groups.find(x => x.id === state.curGroup); if (!g) return;
+    g.taxFree = e.target.checked; refreshAll(true); renderStoreBar();
+  };
+
+  // ---------- 清單 ----------
+  function renderList() {
+    const list = $('list');
+    $('emptyState').classList.toggle('hidden', state.items.length > 0);
+    const card = it => `
+      <div class="rounded-2xl bg-white border border-slate-200 p-3" data-id="${it.id}">
+        <div class="flex gap-3">
+          ${it.photo
+            ? `<img src="${it.photo}" data-zoom class="w-[60px] h-[60px] rounded-lg object-cover border border-slate-300 shrink-0 cursor-zoom-in" alt="">`
+            : `<div class="w-[60px] h-[60px] rounded-lg bg-slate-100 flex items-center justify-center text-2xl shrink-0">🛍️</div>`}
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between gap-2">
+              <p class="font-bold truncate">${escapeHtml(it.name)}</p>
+              <span class="flex shrink-0 gap-2">
+                <button data-edit class="rounded-md border border-slate-300 px-2 py-0.5 text-xs font-bold text-slate-600 hover:bg-slate-50" aria-label="修改">✏️ 修改</button>
+                <button data-del class="text-slate-500 hover:text-red-400 text-sm" aria-label="刪除">✕</button>
+              </span>
+            </div>
+            ${kindBadge(it) ? `<p class="mt-0.5">${kindBadge(it)}</p>` : ''}
+            <p class="text-[11px] text-slate-500 truncate">${it.cat ? catIcon(it.cat) + ' ' + escapeHtml(it.cat) : '🌙 未分類'}${(it.tags||[]).length ? '・' + it.tags.map(t => '#' + escapeHtml(t)).join(' ') : ''}</p>
+            <p class="num text-xs text-slate-500">${it.cur} ${it.fp.toLocaleString()} × ${it.rate} → 售 <b class="text-slate-800">${fmt(it.sell)}</b></p>
+            <p class="num text-sm">單件淨利 <b class="${it.profit < 0 ? 'text-red-600' : 'text-emerald-600'}">${it.profit < 0 ? '-' : ''}${fmt(Math.abs(it.profit))}</b></p>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2">
+          <span class="text-xs text-slate-500 shrink-0">喊單</span>
+          <button data-step="-1" class="w-11 h-11 rounded-xl bg-slate-100 text-xl font-bold active:scale-90">−</button>
+          <input data-qty type="number" inputmode="numeric" min="0" value="${it.qty}"
+            class="num w-16 h-11 rounded-xl bg-slate-50 border border-slate-300 text-center text-xl font-black focus:outline-none focus:border-amber-500">
+          <button data-step="1" class="w-11 h-11 rounded-xl bg-amber-500 text-slate-900 text-xl font-black active:scale-90">＋</button>
+          <span class="text-xs text-slate-500">件</span>
+          <span data-sub class="num ml-auto text-right text-sm font-bold ${it.profit < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmt(it.profit * it.qty)}</span>
+        </div>
+        <div class="mt-2 flex items-center gap-2 text-xs text-slate-500">
+          <span>購買</span>
+          <input data-buy type="number" inputmode="numeric" min="0" value="${buyOf(it)}" class="num w-14 rounded-lg border border-slate-300 bg-white px-1 py-1 text-center text-sm font-bold focus:outline-none focus:border-amber-500">
+          <span>件</span>
+          <span class="num ml-auto">含稅 ${it.cur} ${fmtN(fpIncl(it))}${it.jt === 'food' ? '・🍙食品' : ''}</span>
+        </div>
+      </div>`;
+    if (!state.groups.length) { $('listFoldAll').classList.add('hidden'); list.innerHTML = state.items.map(card).join(''); return; }
+    const order = [''].concat(state.groups.slice().reverse().map(g => g.id)).filter(gid => state.items.some(i => (i.group || '') === gid));
+    $('listFoldAll').classList.toggle('hidden', order.length < 2);
+    $('listFoldAll').textContent = order.some(isFieldOpen) ? '全部收起' : '全部展開';
+    list.innerHTML = order.map(gid => {
+      const arr = state.items.filter(i => (i.group || '') === gid);
+      const sub = arr.reduce((a, i) => a + fpIncl(i) * buyOf(i), 0);
+      const prof = arr.reduce((a, i) => a + i.profit * i.qty, 0);
+      const open = isFieldOpen(gid), cur = gid === state.curGroup;
+      return `<section data-fgid="${gid}" class="rounded-2xl border ${cur ? 'border-sky-400 bg-sky-50/50' : 'border-slate-200 bg-slate-100/60'}">
+        <button type="button" data-ftoggle class="flex w-full items-center gap-2 px-3 py-3 text-left">
+          <span class="w-4 text-sm text-slate-500">${open ? '▼' : '▶'}</span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-black">${gid ? '🧾 ' + escapeHtml(groupName(gid)) : '📥 未指定店家'}${cur ? ' <span class="rounded bg-sky-600 px-1.5 py-0.5 text-[10px] text-white">目前店家</span>' : ''}</span>
+            <span class="num block text-xs text-slate-500">${arr.length} 樣・含稅 ${arr[0].cur} ${fmtN(sub)}・淨利 <b class="${prof < 0 ? 'text-red-600' : 'text-emerald-600'}">${fmt(prof)}</b></span>
+          </span>
+        </button>
+        ${open ? `<div class="space-y-3 px-2 pb-2">${arr.map(card).join('')}</div>` : ''}
+      </section>`;
+    }).join('');
+  }
+  // 現場清單的店家收合：預設只展開「目前店家」，其他收起，方便快速滑到別張發票
+  function isFieldOpen(gid) {
+    const v = (state.fieldOpen || {})[gid];
+    return v == null ? gid === state.curGroup : v;
+  }
+
+  function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function findItem(el) {
+    const card = el.closest('[data-id]');
+    return card ? [card, state.items.find(i => i.id == card.dataset.id)] : [null, null];
+  }
+
+  function setQty(card, it, q) {
+    it.qty = Math.max(0, Math.floor(q) || 0);
+    card.querySelector('[data-qty]').value = it.qty;
+    card.querySelector('[data-sub]').textContent = fmt(it.profit * it.qty);
+    renderDashboard(true);
+  }
+
+  $('list').addEventListener('click', e => {
+    const ft = e.target.closest('[data-ftoggle]');
+    if (ft) {
+      const gid = ft.closest('[data-fgid]').dataset.fgid;
+      state.fieldOpen = state.fieldOpen || {}; state.fieldOpen[gid] = !isFieldOpen(gid);
+      renderList(); return;
+    }
+    const [card, it] = findItem(e.target); if (!it) return;
+    if (e.target.closest('[data-step]')) {
+      setQty(card, it, it.qty + parseInt(e.target.closest('[data-step]').dataset.step));
+      if (navigator.vibrate) navigator.vibrate(10);
+    } else if (e.target.closest('[data-edit]')) {
+      openSheet('', it.id);
+    } else if (e.target.closest('[data-del]')) {
+      if (confirm(`刪除「${it.name}」？`)) {
+        state.items = state.items.filter(i => i !== it);
+        renderList(); renderDashboard(true);
+      }
+    } else if (e.target.closest('[data-zoom]')) {
+      $('lightboxImg').src = it.photo;
+      $('lightbox').classList.replace('hidden', 'flex');
+    }
+  });
+  $('list').addEventListener('input', e => {
+    if (e.target.matches('[data-buy]')) {
+      const [, it] = findItem(e.target); it.buy = Math.max(0, parseInt(e.target.value) || 0);
+      renderStoreBar(); save(); return;
+    }
+    if (!e.target.matches('[data-qty]')) return;
+    const [card, it] = findItem(e.target);
+    it.qty = Math.max(0, parseInt(e.target.value) || 0);
+    card.querySelector('[data-sub]').textContent = fmt(it.profit * it.qty);
+    renderDashboard(true);
+  });
+  $('list').addEventListener('focusin', e => { if (e.target.matches('[data-qty],[data-buy]')) e.target.select(); });
+  $('lightbox').onclick = () => $('lightbox').classList.replace('flex', 'hidden');
+
+  // ---------- 戰情儀表 ----------
+  let lastProfit = 0;
+  function renderDashboard(animate) {
+    const trip = val('travelCost') + val('opsCost');
+    $('breakEvenTotal').textContent = Math.round(trip).toLocaleString('zh-TW');
+    const total = state.items.reduce((s, i) => s + i.profit * i.qty, 0);
+    const remain = trip - total;
+    const pct = trip > 0 ? Math.max(0, total / trip * 100) : 0;
+    const win = remain <= 0 && trip > 0 && total > 0;
+
+    const card = $('deficitCard'), amt = $('deficitAmount'), bar = $('progressBar');
+    if (win) {
+      card.className = 'rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-4 transition-colors';
+      $('deficitLabel').className = 'text-xs text-emerald-700';
+      $('deficitLabel').textContent = '🎉 已成功回本倒賺：';
+      amt.className = 'num text-4xl font-black text-emerald-600 leading-tight mt-1';
+      amt.textContent = fmt(-remain);
+      bar.className = 'h-full bg-emerald-500 transition-all duration-500';
+    } else {
+      card.className = 'rounded-2xl border-2 border-red-400 bg-red-50 p-4 transition-colors';
+      $('deficitLabel').className = 'text-xs text-red-600';
+      $('deficitLabel').textContent = '距離完全打平機酒與開銷，還差台幣：';
+      amt.className = 'num text-4xl font-black text-red-600 leading-tight mt-1';
+      amt.textContent = fmt(remain);
+      bar.className = 'h-full transition-all duration-500 ' + (pct >= 70 ? 'bg-amber-500' : 'bg-red-500');
+    }
+    bar.style.width = Math.min(100, pct) + '%';
+    $('progressPct').textContent = pct.toFixed(1) + '%';
+    $('miniPct').textContent = pct.toFixed(0) + '%';
+    $('miniLabel').textContent = win ? '🎉 倒賺' : '還差';
+    $('miniLabel').className = 'mini-only text-xs font-bold shrink-0 ' + (win ? 'text-emerald-700' : 'text-red-600');
+    $('totalProfit').textContent = (total < 0 ? '-' : '') + fmt(Math.abs(total));
+    $('totalProfit').className = 'num ' + (total < 0 ? 'text-red-600' : 'text-emerald-600');
+
+    const qtySum = state.items.reduce((s, i) => s + i.qty, 0);
+    $('itemCountBadge').textContent = `${state.items.length} 品項・${qtySum} 件`;
+
+    if (animate && Math.round(total) !== Math.round(lastProfit)) {
+      amt.classList.remove('bump'); void amt.offsetWidth; amt.classList.add('bump');
+    }
+    lastProfit = total;
+  }
+
+  // ---------- 自動儲存（存在手機本機） ----------
+  const STORE_KEY = 'daigou-warroom-v1';
+  const FIELDS = ['travelCost','opsCost','currency','rate','shipping','feeRate','tripName','tripDate','jtaxStd','jtaxFood','tol'];
+  const CHECKS = ['taxOn','feeOn','jtaxOn'];
+  let saveTimer = null, warnedFull = false;
+  function toast(msg, ms = 3500) {
+    const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), ms);
+  }
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(writeNow, 300);
+  }
+  function buildData() {
+      const data = { v: 2, nextId: state.nextId, items: state.items, f: {}, c: {},
+        cats: state.cats, tags: state.tags, selCat: state.selCat, selTags: state.selTags,
+        groups: state.groups, nextGid: state.nextGid, ungroupedOpen: state.ungroupedOpen,
+        curGroup: state.curGroup, curJt: state.curJt, sortMode: state.sortMode,
+        exportAt: state.exportAt || null, exportSig: state.exportSig || null, demoTried: !!state.demoTried };
+      FIELDS.forEach(id => data.f[id] = $(id).value);
+      CHECKS.forEach(id => data.c[id] = $(id).checked);
+      return data;
+  }
+  function writeNow() {
+    clearTimeout(saveTimer); saveTimer = null;
+    {
+      const data = buildData();
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(data));
+        warnedFull = false;
+      } catch (e) {
+        // 空間滿了：先試著不存照片，至少保住數字
+        try {
+          localStorage.setItem(STORE_KEY, JSON.stringify({ ...data, items: data.items.map(i => ({ ...i, photo: null })) }));
+          if (!warnedFull) toast('⚠️ 手機儲存空間已滿，新照片不會保存，但數字與清單已存好'); warnedFull = true;
+        } catch (e2) {
+          if (!warnedFull) toast('⚠️ 無法自動儲存（可能是無痕模式），關閉頁面前請留意'); warnedFull = true;
+        }
+      }
+    }
+  }
+  // 第一次開啟：放一組範例資料，示範「群組＝發票」與三種商品類型
+  function seedDemo() {
+    const today = todayStr(), rate = val('rate') || 0.215, ship = val('shipping') || 100;
+    state.groups = [
+      { id: 'g1', name: '晴空塔寶可夢', receipt: 2178, open: true, taxFree: false, demo: true },
+      { id: 'g2', name: '池袋寶可夢', receipt: 4356, open: true, taxFree: false, demo: true }
+    ];
+    state.nextGid = 3;
+    ['寶可夢', '晴空塔', '池袋'].forEach(t => { if (!state.tags.includes(t)) state.tags.push(t); });
+    const mk = (id, name, kind, fp, sell, group, tags) => ({ id, name, kind, photo: null, cur: 'JPY', fp, rate, ship, sell, jt: 'std', group,
+      buy: 1, qty: 1, rc: false, cat: kind === 'freebie' ? '贈品' : kind === 'giveaway' ? '免費提供' : '動漫玩具', tags, date: today, demo: true, profit: 0 });
+    // state.items 以「最新在前」排列
+    state.items = [
+      mk(4, '寶可夢卡包（店家結帳贈送）', 'freebie', 0, 150, 'g2', ['寶可夢', '池袋']),
+      mk(3, '皮卡丘FIT（IG 抽獎用）', 'giveaway', 1980, 0, 'g2', ['寶可夢', '池袋']),
+      mk(2, '皮卡丘FIT', 'normal', 1980, 1290, 'g2', ['寶可夢', '池袋']),
+      mk(1, '皮卡丘FIT', 'normal', 1980, 1290, 'g1', ['寶可夢', '晴空塔'])
+    ];
+    state.nextId = 5; state.curGroup = 'g2'; state.demo = true;
+  }
+  const DEMO_HTML = `
+    <div class="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-violet-300 bg-violet-50 px-3 py-2.5 text-sm text-violet-950">
+      <span class="flex-1 min-w-[12rem]">🧪 目前是<b>範例資料</b>（晴空塔、池袋兩家店），可以先點點看</span>
+      <button type="button" data-ob-open class="rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-700">📖 看說明</button>
+      <button type="button" data-import-open class="rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-700">📥 從舊裝置匯入</button>
+      <button type="button" data-demo-clear class="rounded-lg bg-violet-600 px-3 py-2 text-xs font-black text-white active:scale-95">🧹 清除範例，開始記帳</button>
+    </div>`;
+  function renderDemoBanner() {
+    const on = state.items.some(i => i.demo) || state.groups.some(g => g.demo);
+    document.querySelectorAll('[data-demo-banner]').forEach(el => { el.classList.toggle('hidden', !on); if (on && !el.innerHTML) el.innerHTML = DEMO_HTML; if (!on) el.innerHTML = ''; });
+  }
+  document.addEventListener('click', e => {
+    if (!e.target.closest('[data-demo-clear]')) return;
+    state.items = state.items.filter(i => !i.demo);
+    const demoG = state.groups.filter(g => g.demo).map(g => g.id);
+    state.groups = state.groups.filter(g => !g.demo);
+    state.items.forEach(i => { if (demoG.includes(i.group)) i.group = ''; });
+    if (demoG.includes(state.curGroup)) state.curGroup = '';
+    const used = new Set(state.items.flatMap(i => i.tags || []));
+    state.tags = state.tags.filter(t => !['寶可夢', '晴空塔', '池袋'].includes(t) || used.has(t));
+    if (!state.items.length) { state.nextId = 1; }
+    state.exportAt = null; state.exportSig = null;
+    renderTagChips(); renderList(); renderSort(); renderDashboard(true); renderDemoBanner(); showTab('field');
+    toast('範例已清除，開始你的第一趟吧 🛫');
+  });
+  // ---- 說明卡 ----
+  const OB_KEY = 'daigou-warroom-onboarded', TIP_KEY = 'daigou-warroom-tips';
+  const obTrack = () => $('obTrack');
+  function obIndex() { const t = obTrack(); return Math.round(t.scrollLeft / Math.max(1, t.clientWidth)); }
+  function obPaint() {
+    const i = obIndex(), n = obTrack().children.length;
+    [...$('obDots').children].forEach((d, k) => d.className = 'h-2 rounded-full transition-all ' + (k === i ? 'w-6 bg-amber-500' : 'w-2 bg-slate-300'));
+    $('obNext').textContent = i >= n - 1 ? '開始看範例 🚀' : '下一張 →';
+  }
+  function openOnboard() { $('onboard').classList.remove('hidden'); obTrack().scrollLeft = 0; obPaint(); }
+  function closeOnboard() { $('onboard').classList.add('hidden'); try { localStorage.setItem(OB_KEY, '1'); } catch (e) {} }
+  obTrack().addEventListener('scroll', () => requestAnimationFrame(obPaint));
+  $('obNext').onclick = () => {
+    const i = obIndex(), n = obTrack().children.length;
+    if (i >= n - 1) { closeOnboard(); return; }
+    obTrack().scrollTo({ left: (i + 1) * obTrack().clientWidth, behavior: 'smooth' });
+  };
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-ob-open]')) openOnboard();
+    else if (e.target.closest('[data-ob-close]')) closeOnboard();
+    const tc = e.target.closest('[data-tip-close]');
+    if (tc) {
+      const key = tc.closest('[data-tip]').dataset.tip; let d = {};
+      try { d = JSON.parse(localStorage.getItem(TIP_KEY) || '{}'); } catch (_) {}
+      d[key] = 1; try { localStorage.setItem(TIP_KEY, JSON.stringify(d)); } catch (_) {}
+      renderTips();
+    }
+  });
+  function renderTips() {
+    let d = {}; try { d = JSON.parse(localStorage.getItem(TIP_KEY) || '{}'); } catch (_) {}
+    document.querySelectorAll('[data-tip]').forEach(el => { const on = !d[el.dataset.tip]; el.classList.toggle('hidden', !on); el.classList.toggle('flex', on); });
+  }
+  // ---- 備份檔：匯出／匯入（換裝置用） ----
+  const UNDO_KEY = 'daigou-warroom-undo', IMPORTED_KEY = 'daigou-warroom-imported';
+  const stamp = () => { const d = new Date(), p2 = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`; };
+  function renderBackupInfo() {
+    const photos = state.items.filter(i => i.photo).length;
+    const kb = Math.round(JSON.stringify(buildData()).length / 1024);
+    $('backupInfo').textContent = `目前：${state.items.length} 件商品（${photos} 張照片）・${state.groups.length} 家店・備份檔約 ${kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB'}`;
+  }
+  $('backupExport').onclick = async () => {
+    const data = buildData();
+    const wrap = { app: 'daigou-warroom', format: 1, exportedAt: new Date().toISOString(),
+      trip: $('tripName').value.trim() || '', counts: { items: state.items.length, groups: state.groups.length }, data };
+    const name = `代購備份_${(wrap.trip || '未命名').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 20)}_${stamp()}.json`;
+    const blob = new Blob([JSON.stringify(wrap)], { type: 'application/json' });
+    try { await window.WarroomExport.deliver(blob, name); toast('📦 備份檔已產生，傳到另一台裝置後按「匯入備份檔」'); }
+    catch (e) { console.error(e); toast('⚠️ 備份檔產生失敗'); }
+  };
+  document.addEventListener('click', e => { if (e.target.closest('[data-import-open]')) $('backupImport').click(); });
+  $('backupImport').onchange = async e => {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    let wrap;
+    try { wrap = JSON.parse(await file.text()); } catch (_) { toast('⚠️ 這不是有效的備份檔（無法讀取 JSON）'); return; }
+    const data = wrap && wrap.app === 'daigou-warroom' ? wrap.data : (wrap && Array.isArray(wrap.items) ? wrap : null);
+    if (!data || !Array.isArray(data.items)) { toast('⚠️ 這個檔案不是「代購戰情室」的備份檔'); return; }
+    const when = wrap.exportedAt ? new Date(wrap.exportedAt).toLocaleString('zh-TW', { hour12: false }) : '不明';
+    const gCount = Array.isArray(data.groups) ? data.groups.length : 0;
+    const curReal = state.items.filter(i => !i.demo).length;
+    const msg = `要匯入這個備份嗎？\n\n📦 ${wrap.trip ? '行程「' + wrap.trip + '」・' : ''}${data.items.length} 件商品、${gCount} 家店\n🕒 匯出時間：${when}\n\n` +
+      (curReal ? `⚠️ 這台裝置目前的 ${curReal} 件商品會被取代（匯入後可以按「↩ 復原」）。` : '這台裝置目前沒有自己的資料，可以放心匯入。');
+    if (!confirm(msg)) return;
+    writeNow();
+    try { const prev = localStorage.getItem(STORE_KEY); if (prev) localStorage.setItem(UNDO_KEY, prev); } catch (_) {
+      if (!confirm('⚠️ 手機空間不足，無法保留「復原」用的舊資料。仍要繼續匯入嗎？')) return;
+    }
+    try {
+      saveTimer = null;
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+      localStorage.setItem(IMPORTED_KEY, JSON.stringify({ n: data.items.length, g: gCount, trip: wrap.trip || '' }));
+      localStorage.setItem('daigou-warroom-onboarded', '1');
+    } catch (_) { toast('⚠️ 手機儲存空間不足，匯入失敗'); return; }
+    suppressSave = true; location.reload();
+  };
+  function renderImportBanner() {
+    let info = null; try { info = JSON.parse(localStorage.getItem(IMPORTED_KEY) || 'null'); } catch (_) {}
+    $('importBanner').classList.toggle('hidden', !info); $('importBanner').classList.toggle('flex', !!info);
+    if (info) $('importBannerText').innerHTML = `✅ 已匯入備份：${info.trip ? '「' + escapeHtml(info.trip) + '」' : ''}<b>${info.n}</b> 件商品、<b>${info.g}</b> 家店。請確認資料是否正確。`;
+  }
+  $('importOk').onclick = () => { try { localStorage.removeItem(IMPORTED_KEY); localStorage.removeItem(UNDO_KEY); } catch (_) {} renderImportBanner(); toast('👍 已完成搬家'); };
+  $('importUndo').onclick = () => {
+    let prev = null; try { prev = localStorage.getItem(UNDO_KEY); } catch (_) {}
+    if (!confirm(prev ? '回到匯入前的資料？（這次匯入的內容會被移除）' : '找不到匯入前的資料（可能原本是空的）。要清空這次匯入的資料嗎？')) return;
+    try {
+      if (prev) localStorage.setItem(STORE_KEY, prev); else localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(UNDO_KEY); localStorage.removeItem(IMPORTED_KEY);
+    } catch (_) {}
+    suppressSave = true; location.reload();
+  };
+  let suppressSave = false;
+  let firstOpen = false;
+  function load() {
+    let data = null;
+    try { data = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch (e) {}
+    if (!data) { seedDemo(); firstOpen = true; return; }
+    FIELDS.forEach(id => { if (data.f && data.f[id] != null) $(id).value = data.f[id]; });
+    CHECKS.forEach(id => { if (data.c && data.c[id] != null) $(id).checked = data.c[id]; });
+    $('curLabel').textContent = $('currency').value;
+    state.items = Array.isArray(data.items) ? data.items : [];
+    state.items.forEach(it => { if (typeof it.cat !== 'string') it.cat = ''; if (!Array.isArray(it.tags)) it.tags = []; });
+    state.nextId = data.nextId || state.items.length + 1;
+    if (Array.isArray(data.cats) && data.cats.length) state.cats = data.cats;
+    if (Array.isArray(data.tags)) state.tags = data.tags;
+    if (Array.isArray(data.groups)) state.groups = data.groups;
+    state.nextGid = data.nextGid || state.groups.length + 1;
+    if (typeof data.ungroupedOpen === 'boolean') state.ungroupedOpen = data.ungroupedOpen;
+    state.items.forEach(it => { if (it.group && !state.groups.some(g => g.id === it.group)) it.group = ''; });
+    state.items.forEach(it => { if (!it.jt) it.jt = 'std'; if (it.buy == null) it.buy = it.qty > 0 ? it.qty : 1; if (it.rc == null) it.rc = false; });
+    state.groups.forEach(g => { if (g.taxFree == null) g.taxFree = false; });
+    if (typeof data.curGroup === 'string') state.curGroup = data.curGroup;
+    state.exportAt = data.exportAt || null; state.exportSig = data.exportSig || null; state.demoTried = !!data.demoTried;
+    if (data.curJt === 'food' || data.curJt === 'std') state.curJt = data.curJt;
+    if (data.sortMode === 'group' || data.sortMode === 'cat') state.sortMode = data.sortMode;
+    ['std', 'food'].forEach(k => document.querySelectorAll(`[data-jtlabel="${k}"]`).forEach(e => e.textContent = $(k === 'std' ? 'jtaxStd' : 'jtaxFood').value));
+    if (typeof data.selCat === 'string') state.selCat = data.selCat;
+    if (Array.isArray(data.selTags)) state.selTags = data.selTags;
+  }
+  // 所有變動最後都會經過 renderDashboard → 在這裡順便存檔
+  const _render = renderDashboard;
+  renderDashboard = function (a) { _render(a); sortProgress(); renderStats(); renderStoreBar(); renderDemoBanner(); save(); };
+  window.addEventListener('pagehide', () => { if (saveTimer && !suppressSave) writeNow(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && saveTimer && !suppressSave) writeNow(); });
+
+  // ---------- 結束本趟（清空，含匯出檢查） ----------
+  const dataSig = () => JSON.stringify([state.items.map(i => [i.id, i.name, i.qty, i.buy, i.sell, i.fp, i.cat, i.group, (i.tags || []).join()]),
+    state.groups.map(g => [g.id, g.name, g.receipt])]);
+  const exportedFresh = () => !!state.exportAt && state.exportSig === dataSig();
+  function renderResetHint() {
+    const h = $('resetExportHint'); if (!h) return;
+    if (!state.items.length) { h.className = 'rounded-lg bg-white px-3 py-2 text-xs text-slate-500'; h.textContent = '目前沒有資料需要清空'; return; }
+    if (exportedFresh()) {
+      const d = new Date(state.exportAt);
+      h.className = 'rounded-lg bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-800';
+      h.textContent = `✅ 已於 ${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 匯出最新版 Excel，可以安心清空`;
+    } else {
+      h.className = 'rounded-lg bg-amber-100 px-3 py-2 text-xs font-bold text-amber-800';
+      h.textContent = state.exportAt ? '⚠️ 上次匯出後資料又有變動，建議先重新匯出 Excel' : '⚠️ 你還沒有匯出本趟 Excel，清空前請先按上方綠色按鈕匯出';
+    }
+  }
+  $('resetBtn').onclick = () => {
+    if (!state.items.length && !state.groups.length) { toast('目前沒有資料需要清空'); return; }
+    if (!exportedFresh() && !confirm('⚠️ 你還沒有匯出最新的 Excel！\n\n清空後資料無法復原。\n\n按「取消」回去先匯出；按「確定」不匯出直接清空。')) return;
+    const typed = prompt(`即將刪除本趟 ${state.items.length} 個商品、${state.groups.length} 個店家／發票。\n\n請輸入「清空」兩個字確認：`);
+    if (typed == null) return;
+    if (typed.trim() !== '清空') { toast('輸入不正確，已取消清空'); return; }
+    state.items = []; state.nextId = 1; state.groups = []; state.nextGid = 1; state.curGroup = '';
+    state.bulk.clear(); state.exportAt = null; state.exportSig = null;
+    renderList(); renderSort(); renderDashboard(true); showTab('field');
+    toast('已清空，祝下一趟大賣 🛫');
+  };
+
+  // ---------- 頂部摺疊 ----------
+  const COLLAPSE_KEY = 'daigou-warroom-collapsed';
+  function setCollapsed(c) {
+    $('topBar').classList.toggle('collapsed', c);
+    $('collapseBtn').textContent = c ? '▼ 展開' : '▲ 收起';
+    try { localStorage.setItem(COLLAPSE_KEY, c ? '1' : '0'); } catch (e) {}
+  }
+  $('collapseBtn').onclick = e => { e.stopPropagation(); setCollapsed(!$('topBar').classList.contains('collapsed')); };
+  // 收起時點整張卡也能展開
+  $('deficitCard').addEventListener('click', e => {
+    if ($('topBar').classList.contains('collapsed') && !e.target.closest('input')) setCollapsed(false);
+  });
+  let savedCollapse = null;
+  try { savedCollapse = localStorage.getItem(COLLAPSE_KEY); } catch (e) {}
+  setCollapsed(savedCollapse === '1');
+
+  load();
+  if (!$('tripDate').value) $('tripDate').value = todayStr();
+  ['tripName','tripDate'].forEach(id => $(id).addEventListener('change', save));
+  fillCatEditor(); renderTagChips();
+
+  // ---------- 匯出 Excel ----------
+  $('exportBtn').onclick = async () => {
+    const btn = $('exportBtn'), label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '⏳ 產生中…';
+    try {
+      await window.WarroomExport.run({
+        items: state.items.map(it => ({ ...it, kind: kindOf(it), buy: buyOf(it), jtr: jtaxOf(it.jt, it.group) })),
+        cats: state.cats, tags: state.tags, groups: state.groups, tol: Math.max(0, val('tol')),
+        jtaxStd: $('jtaxOn').checked ? val('jtaxStd') / 100 : 0,
+        tripName: $('tripName').value.trim(), tripDate: $('tripDate').value,
+        travel: val('travelCost'), ops: val('opsCost'),
+        taxOn: $('taxOn').checked, taxRate: 0.05,
+        feeOn: $('feeOn').checked, feeRate: val('feeRate') / 100,
+        currency: $('currency').value, rate: val('rate'), shipping: val('shipping')
+      });
+      state.exportAt = Date.now(); state.exportSig = dataSig(); save(); renderResetHint();
+    } catch (e) {
+      console.error(e);
+      toast(e && e.userMessage ? e.userMessage : '⚠️ 匯出失敗，請確認網路後再試一次');
+    } finally { btn.disabled = false; btn.innerHTML = label; }
+  };
+
+  readDeductions(); calc(); renderList(); renderDashboard();
+  let savedTab = 'field';
+  try { savedTab = localStorage.getItem(TAB_KEY) || 'field'; } catch (e) {}
+  showTab(['field', 'sort', 'stats'].includes(savedTab) ? savedTab : 'field');
+  renderTips(); renderImportBanner();
+  let onboarded = null; try { onboarded = localStorage.getItem(OB_KEY); } catch (e) {}
+  if (firstOpen && !onboarded) setTimeout(openOnboard, 300);
+})();
+</script>
+</body>
+</html>
