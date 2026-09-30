@@ -1,5 +1,5 @@
 // 離線快取：先用快取秒開，背景再抓新版（改版後下次開啟生效）
-const CACHE = 'warroom-v24';
+const CACHE = 'warroom-v25';
 const ASSETS = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './exceljs.min.js'];
 self.addEventListener('install', e => {
